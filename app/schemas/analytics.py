@@ -1,18 +1,18 @@
-from datetime import date
+from datetime import date as Date
 
 from pydantic import BaseModel, Field
 
 
 class TrendPoint(BaseModel):
-    date: date
+    date: Date
     value: float | None
 
 
 class TrendResponse(BaseModel):
     station_id: str
     variable: str
-    date_from: date
-    date_to: date
+    date_from: Date
+    date_to: Date
     slope_per_decade: float | None = Field(None, description="Rate of change per decade")
     r_squared: float | None = Field(None, description="Goodness of fit (0–1)")
     data_points: list[TrendPoint]
@@ -20,7 +20,7 @@ class TrendResponse(BaseModel):
 
 class AnomalyRecord(BaseModel):
     id: int
-    date: date
+    date: Date
     value: float
     monthly_mean: float
     deviation_sigma: float = Field(..., description="Standard deviations from monthly mean")
@@ -64,8 +64,8 @@ class ComparisonStation(BaseModel):
 
 class CompareResponse(BaseModel):
     variable: str
-    date_from: date
-    date_to: date
+    date_from: Date
+    date_to: Date
     stations: list[ComparisonStation]
 
 
@@ -73,7 +73,7 @@ class ExtremeRecord(BaseModel):
     station_id: str
     station_name: str
     region: str | None
-    date: date
+    date: Date
     value: float
 
 
@@ -101,7 +101,7 @@ class ClimateNormalResponse(BaseModel):
 
 
 class HeatmapCell(BaseModel):
-    date: date
+    date: Date
     value: float | None
 
 

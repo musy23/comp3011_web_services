@@ -1,10 +1,11 @@
-from datetime import date, datetime
+from datetime import date as Date
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class AnnotationBase(BaseModel):
-    observation_date: date | None = Field(None, examples=["2023-07-15"])
+    observation_date: Date | None = Field(None, examples=["2023-07-15"])
     note: str = Field(..., min_length=5, max_length=2000, examples=["Unusually high wind gust recorded during storm."])
     submitted_by: str | None = Field(None, max_length=100, examples=["researcher@leeds.ac.uk"])
 
@@ -19,7 +20,7 @@ class AnnotationUpdate(AnnotationBase):
 
 
 class AnnotationPatch(BaseModel):
-    observation_date: date | None = None
+    observation_date: Date | None = None
     note: str | None = Field(None, min_length=5, max_length=2000)
     submitted_by: str | None = Field(None, max_length=100)
     approved: bool | None = None
