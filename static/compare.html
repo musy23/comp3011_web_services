@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compare Stations · UK Climate Insights</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .station-checkboxes { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0 16px; }
+    .station-checkboxes label {
+      display:flex; align-items:center; gap:6px;
+      background:var(--surface2); border:1px solid var(--border);
+      border-radius:6px; padding:6px 12px; cursor:pointer;
+      font-size:0.85rem; color:var(--text);
+    }
+    .station-checkboxes input[type=checkbox] { accent-color:var(--accent); }
+  </style>
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="logo">
+    <h2>🌦 UK Climate</h2>
+    <span>Insights Dashboard</span>
+  </div>
+  <nav>
+    <a href="/ui"><span class="icon">🗺</span> Overview</a>
+    <a href="/ui/station"><span class="icon">📍</span> Station Explorer</a>
+    <a href="/ui/trends"><span class="icon">📈</span> Trends</a>
+    <a href="/ui/compare" class="active"><span class="icon">⚖</span> Compare</a>
+    <a href="/ui/anomalies"><span class="icon">🔍</span> Anomalies</a>
+    <a href="/ui/heatmap"><span class="icon">🟦</span> Heatmap</a>
+  </nav>
+  <div class="api-link"><a href="/docs" target="_blank">📄 API Docs</a></div>
+</aside>
+
+<main id="main">
+  <div class="page-header">
+    <h1>Compare Stations</h1>
+    <p>Side-by-side climate comparison across multiple UK weather stations</p>
+  </div>
+
+  <div class="controls" style="flex-direction:column;align-items:flex-start">
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end">
+      <div>
+        <label>Variable</label>
+        <select id="sel-var">
+          <option value="mean_temp_c">Mean Temperature</option>
+          <option value="max_temp_c">Max Temperature</option>
+          <option value="min_temp_c">Min Temperature</option>
+          <option value="rainfall_mm">Rainfall</option>
+          <option value="sunshine_hours">Sunshine Hours</option>
+        </select>
+      </div>
+      <div>
+        <label>From</label>
+        <input type="date" id="date-from" value="2000-01-01">
+      </div>
+      <div>
+        <label>To</label>
+        <input type="date" id="date-to" value="2020-12-31">
+      </div>
+      <button id="btn-compare">Compare</button>
+    </div>
+    <div>
+      <label style="margin-bottom:6px">Select 2–8 stations:</label>
+      <div class="station-checkboxes" id="station-checks"></div>
+    </div>
+  </div>
+
+  <!-- Average + range bar chart -->
+  <div class="card" id="avg-card" style="display:none">
+    <div class="card-title" id="avg-title">Average Value by Station</div>
+    <div class="chart-wrap">
+      <canvas id="chart-avg"></canvas>
+    </div>
+  </div>
+
+  <!-- Min/Mean/Max grouped bar -->
+  <div class="card" id="range-card" style="display:none">
+    <div class="card-title" id="range-title">Min / Mean / Max by Station</div>
+    <div class="chart-wrap">
+      <canvas id="chart-range"></canvas>
+    </div>
+  </div>
+
+  <!-- Monthly profile radar (uses seasonal endpoint per station) -->
+  <div class="card" id="radar-card" style="display:none">
+    <div class="card-title" id="radar-title">Monthly Profile (Radar)</div>
+    <div class="chart-wrap">
+      <canvas id="chart-radar"></canvas>
+    </div>
+  </div>
+
+  <!-- Summary table -->
+  <div class="card" id="table-card" style="display:none">
+    <div class="card-title" id="table-title">Summary Table</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Station</th><th>Name</th><th>Mean</th><th>Min</th><th>Max</th><th>Records</th></tr></thead>
+        <tbody id="compare-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="msg"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script type="module">
+import { getStations, getCompare, getSeasonal, applyDarkTheme, PALETTE, MONTH_NAMES, setError } from '/static/js/api.js';
+
+applyDarkTheme();
+
+const data = await getStations().catch(()=>[]);
+const items = data; // getStations() already returns array
+
+const checksEl = document.getElementById('station-checks');
+const defaultChecked = ['HEATHROW','OXFORD','DURHAM','CAMBRIDGE'];
+items.forEach(s => {
+  const lbl = document.createElement('label');
+  lbl.innerHTML = `<input type="checkbox" value="${s.station_id}" ${defaultChecked.includes(s.station_id)?'checked':''}> ${s.name}`;
+  checksEl.appendChild(lbl);
+});
+
+let chartAvg = null, chartRange = null, chartRadar = null;
+
+document.getElementById('btn-compare').addEventListener('click', async () => {
+  const selected = [...checksEl.querySelectorAll('input:checked')].map(i=>i.value);
+  if (selected.length < 2) { alert('Please select at least 2 stations.'); return; }
+  const variable = document.getElementById('sel-var').value;
+  const dateFrom = document.getElementById('date-from').value;
+  const dateTo = document.getElementById('date-to').value;
+  const msg = document.getElementById('msg');
+  msg.innerHTML = '<p class="loading">Loading comparison…</p>';
+
+  const varLabels = { mean_temp_c:'Mean Temp (°C)', max_temp_c:'Max Temp (°C)', min_temp_c:'Min Temp (°C)', rainfall_mm:'Rainfall (mm)', sunshine_hours:'Sunshine (h)' };
+  const unit = { mean_temp_c:'°C', max_temp_c:'°C', min_temp_c:'°C', rainfall_mm:'mm', sunshine_hours:'h' }[variable];
+
+  try {
+    const res = await getCompare(selected, variable, dateFrom, dateTo);
+    msg.innerHTML = '';
+    const stations = res.stations || [];
+    const stLabels = stations.map(s => s.station_id);
+
+    // ── Average bar chart ────────────────────────────────────────────────────
+    document.getElementById('avg-card').style.display = 'block';
+    document.getElementById('avg-title').textContent = `Average ${varLabels[variable]} by Station`;
+    if (chartAvg) chartAvg.destroy();
+    chartAvg = new Chart(document.getElementById('chart-avg'), {
+      type: 'bar',
+      data: {
+        labels: stLabels,
+        datasets: [{
+          label: `Avg ${varLabels[variable]}`,
+          data: stations.map(s => s.mean?.toFixed(2)),
+          backgroundColor: stations.map((_,i)=>PALETTE[i%PALETTE.length]+'aa'),
+          borderColor: stations.map((_,i)=>PALETTE[i%PALETTE.length]),
+          borderWidth: 1.5,
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        scales:{
+          x:{ ticks:{color:'#8b92b4'}, grid:{color:'#2e3251'} },
+          y:{ title:{display:true, text:varLabels[variable], color:'#8b92b4'}, grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+        },
+        plugins:{ legend:{display:false} },
+      },
+    });
+
+    // ── Min/Mean/Max grouped bar chart ───────────────────────────────────────
+    document.getElementById('range-card').style.display = 'block';
+    document.getElementById('range-title').textContent = `Min / Mean / Max ${varLabels[variable]}`;
+    if (chartRange) chartRange.destroy();
+    chartRange = new Chart(document.getElementById('chart-range'), {
+      type: 'bar',
+      data: {
+        labels: stLabels,
+        datasets: [
+          { label:`Min`, data: stations.map(s=>s.min?.toFixed(2)), backgroundColor:'#64b5f6aa', borderColor:'#64b5f6', borderWidth:1.5, borderRadius:3 },
+          { label:`Mean`, data: stations.map(s=>s.mean?.toFixed(2)), backgroundColor:'#4f8ef7aa', borderColor:'#4f8ef7', borderWidth:1.5, borderRadius:3 },
+          { label:`Max`, data: stations.map(s=>s.max?.toFixed(2)), backgroundColor:'#f05858aa', borderColor:'#f05858', borderWidth:1.5, borderRadius:3 },
+        ],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        scales:{
+          x:{ ticks:{color:'#8b92b4'}, grid:{color:'#2e3251'} },
+          y:{ title:{display:true, text:varLabels[variable], color:'#8b92b4'}, grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+        },
+        plugins:{ legend:{labels:{color:'#8b92b4'}} },
+      },
+    });
+
+    // ── Radar: monthly profile ───────────────────────────────────────────────
+    const yearFrom = dateFrom.slice(0,4);
+    const yearTo = dateTo.slice(0,4);
+    const seasonalData = await Promise.all(
+      selected.map(sid => getSeasonal(sid, variable, yearFrom, yearTo).catch(()=>null))
+    );
+    const radarDatasets = seasonalData.map((sd, i) => {
+      if (!sd) return null;
+      const months = Array.from({length:12}, (_,idx)=>{
+        const m = sd.monthly_stats.find(x=>x.month===idx+1);
+        return m?.mean?.toFixed(1) ?? null;
+      });
+      return {
+        label: selected[i],
+        data: months,
+        borderColor: PALETTE[i%PALETTE.length],
+        backgroundColor: PALETTE[i%PALETTE.length]+'33',
+        borderWidth: 2,
+        pointRadius: 3,
+      };
+    }).filter(Boolean);
+
+    if (radarDatasets.length) {
+      document.getElementById('radar-card').style.display = 'block';
+      document.getElementById('radar-title').textContent = `Monthly ${varLabels[variable]} Profile`;
+      if (chartRadar) chartRadar.destroy();
+      chartRadar = new Chart(document.getElementById('chart-radar'), {
+        type: 'radar',
+        data: { labels: MONTH_NAMES, datasets: radarDatasets },
+        options: {
+          responsive:true, maintainAspectRatio:false,
+          scales:{ r:{ grid:{color:'#2e3251'}, ticks:{color:'#8b92b4', backdropColor:'transparent'}, pointLabels:{color:'#8b92b4'} } },
+          plugins:{ legend:{labels:{color:'#8b92b4'}} },
+        },
+      });
+    }
+
+    // ── Summary table ────────────────────────────────────────────────────────
+    document.getElementById('table-card').style.display = 'block';
+    document.getElementById('table-title').textContent = `${varLabels[variable]} Summary (${dateFrom} → ${dateTo})`;
+    document.getElementById('compare-tbody').innerHTML = stations.map(s => `
+      <tr>
+        <td><span class="badge">${s.station_id}</span></td>
+        <td>${s.station_name}</td>
+        <td>${s.mean?.toFixed(2) ?? '—'}${unit}</td>
+        <td>${s.min?.toFixed(2) ?? '—'}${unit}</td>
+        <td>${s.max?.toFixed(2) ?? '—'}${unit}</td>
+        <td>${s.count?.toLocaleString()}</td>
+      </tr>`).join('');
+
+  } catch(e) {
+    msg.innerHTML = '';
+    setError(msg, e.message);
+  }
+});
+
+if (items.length) document.getElementById('btn-compare').click();
+</script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trends · UK Climate Insights</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="logo">
+    <h2>🌦 UK Climate</h2>
+    <span>Insights Dashboard</span>
+  </div>
+  <nav>
+    <a href="/ui"><span class="icon">🗺</span> Overview</a>
+    <a href="/ui/station"><span class="icon">📍</span> Station Explorer</a>
+    <a href="/ui/trends" class="active"><span class="icon">📈</span> Trends</a>
+    <a href="/ui/compare"><span class="icon">⚖</span> Compare</a>
+    <a href="/ui/anomalies"><span class="icon">🔍</span> Anomalies</a>
+    <a href="/ui/heatmap"><span class="icon">🟦</span> Heatmap</a>
+  </nav>
+  <div class="api-link"><a href="/docs" target="_blank">📄 API Docs</a></div>
+</aside>
+
+<main id="main">
+  <div class="page-header">
+    <h1>Climate Trends</h1>
+    <p>Linear regression on any climate variable over time with decadal slope and R² goodness-of-fit</p>
+  </div>
+
+  <div class="controls">
+    <div>
+      <label>Station</label>
+      <select id="sel-station"></select>
+    </div>
+    <div>
+      <label>Variable</label>
+      <select id="sel-var">
+        <option value="mean_temp_c">Mean Temperature</option>
+        <option value="max_temp_c">Max Temperature</option>
+        <option value="min_temp_c">Min Temperature</option>
+        <option value="rainfall_mm">Rainfall</option>
+        <option value="sunshine_hours">Sunshine Hours</option>
+      </select>
+    </div>
+    <div>
+      <label>From</label>
+      <input type="date" id="date-from" value="1950-01-01">
+    </div>
+    <div>
+      <label>To</label>
+      <input type="date" id="date-to" value="2024-12-31">
+    </div>
+    <button id="btn-run">Calculate Trend</button>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stat-grid" id="trend-stats" style="display:none">
+    <div class="stat-card">
+      <div class="label">Trend (per decade)</div>
+      <div class="value slope" id="slope-val">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">R² (goodness of fit)</div>
+      <div class="value" id="r2-val">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Data Points</div>
+      <div class="value" id="pts-val">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Period</div>
+      <div class="value" id="period-val" style="font-size:1rem">—</div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="card" id="chart-card" style="display:none">
+    <div class="card-title" id="chart-title">Trend Analysis</div>
+    <div class="chart-wrap tall">
+      <canvas id="chart-trend"></canvas>
+    </div>
+  </div>
+
+  <div id="msg"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script type="module">
+import { getStations, getTrends, applyDarkTheme, PALETTE, setError, populateStationSelect } from '/static/js/api.js';
+
+applyDarkTheme();
+
+const data = await getStations().catch(()=>[]);
+const items = data; // getStations() already returns array
+populateStationSelect(document.getElementById('sel-station'), items);
+
+// Pre-select Durham (long record)
+const durhamOpt = [...document.getElementById('sel-station').options].find(o=>o.value==='DURHAM');
+if (durhamOpt) durhamOpt.selected = true;
+
+let chart = null;
+
+document.getElementById('btn-run').addEventListener('click', async () => {
+  const sid = document.getElementById('sel-station').value;
+  const variable = document.getElementById('sel-var').value;
+  const dateFrom = document.getElementById('date-from').value;
+  const dateTo = document.getElementById('date-to').value;
+  const msg = document.getElementById('msg');
+  msg.innerHTML = '<p class="loading">Calculating…</p>';
+
+  try {
+    const res = await getTrends(sid, variable, dateFrom, dateTo);
+    msg.innerHTML = '';
+
+    const pts = res.data_points || [];
+    const labels = pts.map(p => p.date);
+    const values = pts.map(p => p.value);
+
+    // Regression line overlay
+    const n = pts.length;
+    const xs = pts.map((_, i) => i);
+    const slope = res.slope_per_decade / 120; // per decade → per month
+    const intercept = values.reduce((a,b)=>a+b,0)/n - slope * (n-1)/2;
+    const regLine = xs.map(x => +(intercept + slope * x).toFixed(3));
+
+    // Display stats
+    document.getElementById('trend-stats').style.display = 'grid';
+    const slopeEl = document.getElementById('slope-val');
+    const s = res.slope_per_decade;
+    const unit = variable.includes('temp') ? '°C' : variable.includes('rain') ? 'mm' : 'h';
+    slopeEl.textContent = `${s > 0 ? '+' : ''}${s?.toFixed(3)} ${unit}`;
+    slopeEl.className = `value slope ${s > 0.05 ? 'up' : s < -0.05 ? 'down' : 'flat'}`;
+    document.getElementById('r2-val').textContent = res.r_squared?.toFixed(4) ?? '—';
+    document.getElementById('pts-val').textContent = n;
+    document.getElementById('period-val').textContent = `${dateFrom.slice(0,7)} → ${dateTo.slice(0,7)}`;
+
+    // Chart
+    document.getElementById('chart-card').style.display = 'block';
+    const varLabels = { mean_temp_c:'Mean Temp (°C)', max_temp_c:'Max Temp (°C)', min_temp_c:'Min Temp (°C)', rainfall_mm:'Rainfall (mm)', sunshine_hours:'Sunshine (h)' };
+    document.getElementById('chart-title').textContent = `${varLabels[variable] || variable} — ${res.station_id}`;
+
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById('chart-trend'), {
+      data: {
+        labels,
+        datasets: [
+          {
+            type: 'line',
+            label: varLabels[variable],
+            data: values,
+            borderColor: PALETTE[0],
+            backgroundColor: 'rgba(79,142,247,0.08)',
+            borderWidth: 1.5,
+            pointRadius: n > 200 ? 0 : 2,
+            tension: 0.1,
+          },
+          {
+            type: 'line',
+            label: `Trend (${s >= 0 ? '+' : ''}${s?.toFixed(3)} ${unit}/decade)`,
+            data: regLine,
+            borderColor: s > 0 ? '#f05858' : '#34c78a',
+            borderWidth: 2.5,
+            borderDash: [6, 3],
+            pointRadius: 0,
+          },
+        ],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'index', intersect:false },
+        scales:{
+          x:{ ticks:{ color:'#8b92b4', maxTicksLimit:10 }, grid:{color:'#2e3251'} },
+          y:{ title:{display:true, text:varLabels[variable], color:'#8b92b4'}, grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+        },
+        plugins:{ legend:{labels:{color:'#8b92b4'}} },
+      },
+    });
+  } catch(e) {
+    msg.innerHTML = '';
+    setError(msg, e.message);
+  }
+});
+
+// Auto-run on load
+if (items.length) document.getElementById('btn-run').click();
+</script>
+</body>
+</html>

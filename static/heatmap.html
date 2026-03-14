@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Heatmap · UK Climate Insights</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .hm-legend {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .hm-legend-bar {
+      flex: 1;
+      height: 10px;
+      border-radius: 4px;
+      background: linear-gradient(to right, #1e3a5f, #2563eb, #34c78a, #f5c842, #f05858);
+      max-width: 300px;
+    }
+    .month-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 4px;
+    }
+    .heatmap-container {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 4px;
+    }
+    .hm-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .hm-cell-sq {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 4px;
+      cursor: default;
+      position: relative;
+      transition: transform 0.1s;
+    }
+    .hm-cell-sq:hover { transform: scale(1.15); z-index: 2; }
+    .hm-cell-sq::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: 120%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.72rem;
+      white-space: nowrap;
+      z-index: 10;
+      display: none;
+    }
+    .hm-cell-sq:hover::after { display: block; }
+  </style>
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="logo">
+    <h2>🌦 UK Climate</h2>
+    <span>Insights Dashboard</span>
+  </div>
+  <nav>
+    <a href="/ui"><span class="icon">🗺</span> Overview</a>
+    <a href="/ui/station"><span class="icon">📍</span> Station Explorer</a>
+    <a href="/ui/trends"><span class="icon">📈</span> Trends</a>
+    <a href="/ui/compare"><span class="icon">⚖</span> Compare</a>
+    <a href="/ui/anomalies"><span class="icon">🔍</span> Anomalies</a>
+    <a href="/ui/heatmap" class="active"><span class="icon">🟦</span> Heatmap</a>
+  </nav>
+  <div class="api-link"><a href="/docs" target="_blank">📄 API Docs</a></div>
+</aside>
+
+<main id="main">
+  <div class="page-header">
+    <h1>Calendar Heatmap</h1>
+    <p>Monthly climate values visualised as a colour-coded grid across years</p>
+  </div>
+
+  <div class="controls">
+    <div>
+      <label>Station</label>
+      <select id="sel-station"></select>
+    </div>
+    <div>
+      <label>Variable</label>
+      <select id="sel-var">
+        <option value="mean_temp_c">Mean Temperature</option>
+        <option value="max_temp_c">Max Temperature</option>
+        <option value="min_temp_c">Min Temperature</option>
+        <option value="rainfall_mm">Rainfall</option>
+        <option value="sunshine_hours">Sunshine Hours</option>
+      </select>
+    </div>
+    <div>
+      <label>Year</label>
+      <input type="number" id="year" value="2020" min="1800" max="2024" style="width:90px">
+    </div>
+    <div>
+      <label>Multi-year (from → to)</label>
+      <input type="number" id="year-start" placeholder="1990" min="1800" max="2024" style="width:80px">
+      <span style="color:var(--muted);padding:0 4px">→</span>
+      <input type="number" id="year-end" placeholder="2024" min="1800" max="2024" style="width:80px">
+    </div>
+    <button id="btn-load">Show Heatmap</button>
+  </div>
+
+  <div id="heatmap-wrap"></div>
+  <div id="msg"></div>
+</main>
+
+<script type="module">
+import { getStations, getHeatmap, setError, populateStationSelect, MONTH_NAMES } from '/static/js/api.js';
+
+const data = await getStations().catch(()=>[]);
+const items = data; // getStations() already returns array
+const selStation = document.getElementById('sel-station');
+populateStationSelect(selStation, items);
+const ox = [...selStation.options].find(o=>o.value==='OXFORD');
+if (ox) ox.selected = true;
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpColor(c1, c2, t) {
+  const hex = h => parseInt(h, 16);
+  const r = Math.round(lerp(hex(c1.slice(1,3)), hex(c2.slice(1,3)), t));
+  const g = Math.round(lerp(hex(c1.slice(3,5)), hex(c2.slice(3,5)), t));
+  const b2 = Math.round(lerp(hex(c1.slice(5,7)), hex(c2.slice(5,7)), t));
+  return `rgb(${r},${g},${b2})`;
+}
+
+function valueToColor(val, min, max, variable) {
+  if (val == null) return '#22263a';
+  const t = max === min ? 0.5 : (val - min) / (max - min);
+  if (variable === 'rainfall_mm') {
+    // Blue gradient for rain
+    return lerpColor('#1e3a5f', '#4f8ef7', t);
+  }
+  if (variable === 'sunshine_hours') {
+    return lerpColor('#1a1d27', '#f5c842', t);
+  }
+  // Temperature: blue → green → yellow → red
+  if (t < 0.25) return lerpColor('#1e4488', '#34c78a', t * 4);
+  if (t < 0.5) return lerpColor('#34c78a', '#f5c842', (t - 0.25) * 4);
+  return lerpColor('#f5c842', '#f05858', (t - 0.5) * 2);
+}
+
+document.getElementById('btn-load').addEventListener('click', async () => {
+  const sid = selStation.value;
+  const variable = document.getElementById('sel-var').value;
+  const singleYear = parseInt(document.getElementById('year').value);
+  const yStart = parseInt(document.getElementById('year-start').value) || null;
+  const yEnd = parseInt(document.getElementById('year-end').value) || null;
+  const wrap = document.getElementById('heatmap-wrap');
+  const msg = document.getElementById('msg');
+  msg.innerHTML = '<p class="loading">Loading…</p>';
+  wrap.innerHTML = '';
+
+  const varLabels = { mean_temp_c:'Mean Temp (°C)', max_temp_c:'Max Temp (°C)', min_temp_c:'Min Temp (°C)', rainfall_mm:'Rainfall (mm)', sunshine_hours:'Sunshine (h)' };
+  const unit = { mean_temp_c:'°C', max_temp_c:'°C', min_temp_c:'°C', rainfall_mm:'mm', sunshine_hours:'h' }[variable];
+
+  try {
+    const years = yStart && yEnd
+      ? Array.from({length: yEnd - yStart + 1}, (_, i) => yStart + i)
+      : [singleYear];
+
+    const results = await Promise.all(years.map(y => getHeatmap(sid, variable, y).catch(()=>null)));
+
+    // Collect all values for global scale
+    const allVals = results.flatMap(r => (r?.cells || []).map(c=>c.value)).filter(v=>v!=null);
+    const globalMin = Math.min(...allVals);
+    const globalMax = Math.max(...allVals);
+
+    msg.innerHTML = '';
+
+    results.forEach((res, idx) => {
+      if (!res) return;
+      const year = years[idx];
+      const cells = res.cells || [];
+      // cells have a `date` field like "2020-01-15" — extract month number
+      const byMonth = Object.fromEntries(cells.map(c => [parseInt(c.date.slice(5,7)), c]));
+
+      const section = document.createElement('div');
+      section.className = 'card';
+      section.innerHTML = `<div class="card-title">${year} — ${varLabels[variable]}</div>`;
+
+      const grid = document.createElement('div');
+      grid.className = 'heatmap-container';
+
+      MONTH_NAMES.forEach((mName, i) => {
+        const col = document.createElement('div');
+        col.className = 'hm-col';
+
+        const cell = byMonth[i + 1];
+        const sq = document.createElement('div');
+        sq.className = 'hm-cell-sq';
+        sq.style.background = valueToColor(cell?.value, globalMin, globalMax, variable);
+        sq.setAttribute('data-tip', cell ? `${mName} ${year}: ${cell.value?.toFixed(1)}${unit}` : `${mName}: no data`);
+
+        const lbl = document.createElement('div');
+        lbl.className = 'month-label';
+        lbl.textContent = mName;
+
+        col.appendChild(sq);
+        col.appendChild(lbl);
+        grid.appendChild(col);
+      });
+
+      section.appendChild(grid);
+
+      // Legend
+      if (allVals.length) {
+        const legend = document.createElement('div');
+        legend.className = 'hm-legend';
+        legend.innerHTML = `<span>${globalMin.toFixed(1)}${unit}</span><div class="hm-legend-bar"></div><span>${globalMax.toFixed(1)}${unit}</span>`;
+        section.appendChild(legend);
+      }
+
+      wrap.appendChild(section);
+    });
+
+  } catch(e) {
+    msg.innerHTML = '';
+    setError(msg, e.message);
+  }
+});
+
+if (items.length) document.getElementById('btn-load').click();
+</script>
+</body>
+</html>

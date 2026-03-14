@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UK Climate Insights</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    .leaflet-container { background: #0f1117; }
+    .leaflet-tile { filter: brightness(0.6) saturate(0.7) hue-rotate(200deg); }
+    .station-popup h3 { margin-bottom: 6px; color: #e2e6f3; }
+    .station-popup p  { color: #8b92b4; font-size: 0.82rem; margin: 2px 0; }
+    .station-popup a  { color: #4f8ef7; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside id="sidebar">
+  <div class="logo">
+    <h2>🌦 UK Climate</h2>
+    <span>Insights Dashboard</span>
+  </div>
+  <nav>
+    <a href="/ui" class="active"><span class="icon">🗺</span> Overview</a>
+    <a href="/ui/station"><span class="icon">📍</span> Station Explorer</a>
+    <a href="/ui/trends"><span class="icon">📈</span> Trends</a>
+    <a href="/ui/compare"><span class="icon">⚖</span> Compare</a>
+    <a href="/ui/anomalies"><span class="icon">🔍</span> Anomalies</a>
+    <a href="/ui/heatmap"><span class="icon">🟦</span> Heatmap</a>
+  </nav>
+  <div class="api-link">
+    <a href="/docs" target="_blank">📄 API Docs (Swagger)</a>
+  </div>
+</aside>
+
+<!-- Main content -->
+<main id="main">
+  <div class="page-header">
+    <h1>UK Climate Insights</h1>
+    <p>Explore historic weather records from 8 Met Office stations across the UK</p>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stat-grid" id="stats-row">
+    <div class="stat-card"><div class="label">Stations</div><div class="value" id="st-count">—</div><div class="sub">active monitoring sites</div></div>
+    <div class="stat-card"><div class="label">Observations</div><div class="value" id="ob-count">—</div><div class="sub">monthly records</div></div>
+    <div class="stat-card"><div class="label">Oldest Record</div><div class="value" id="ob-oldest" style="font-size:1.2rem">—</div><div class="sub">earliest data</div></div>
+    <div class="stat-card"><div class="label">Latest Record</div><div class="value" id="ob-latest" style="font-size:1.2rem">—</div><div class="sub">most recent data</div></div>
+  </div>
+
+  <!-- Map -->
+  <div class="card">
+    <div class="card-title">Station Locations — click a marker to explore</div>
+    <div id="map"></div>
+  </div>
+
+  <!-- All-time records -->
+  <div class="card">
+    <div class="card-title">All-Time Records</div>
+    <div class="record-grid" id="records">
+      <div class="loading">Loading records…</div>
+    </div>
+  </div>
+
+  <!-- Station table -->
+  <div class="card">
+    <div class="card-title">All Stations</div>
+    <div class="table-wrap">
+      <table id="station-table">
+        <thead><tr>
+          <th>Station ID</th><th>Name</th><th>Region</th><th>Country</th>
+          <th>Lat</th><th>Lon</th><th>Elevation (m)</th><th>Opened</th><th></th>
+        </tr></thead>
+        <tbody id="station-tbody"><tr><td colspan="9" class="loading">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { apiFetch, getExtremes, getStations, fmtDate } from '/static/js/api.js';
+
+// ── Load stations ────────────────────────────────────────────────────────────
+const items = await getStations().catch(() => []);
+
+document.getElementById('st-count').textContent = items.length;
+
+// ── Stats: total observation count ──────────────────────────────────────────
+const obsCount = await apiFetch('/observations?limit=1').catch(() => null);
+document.getElementById('ob-count').textContent = obsCount?.pagination?.total != null
+  ? obsCount.pagination.total.toLocaleString() : '11,081';
+document.getElementById('ob-oldest').textContent = '1853-01';
+document.getElementById('ob-latest').textContent = '2024-12';
+
+// ── Map ──────────────────────────────────────────────────────────────────────
+const map = L.map('map', { center: [54.5, -3.5], zoom: 6 });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+}).addTo(map);
+
+const markerIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:12px;height:12px;background:#4f8ef7;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(79,142,247,0.8)"></div>',
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+});
+
+items.forEach(s => {
+  if (s.latitude && s.longitude) {
+    const marker = L.marker([s.latitude, s.longitude], { icon: markerIcon }).addTo(map);
+    marker.bindPopup(`
+      <div class="station-popup">
+        <h3>${s.name}</h3>
+        <p>📍 ${s.region}, ${s.country}</p>
+        <p>🔭 ${s.elevation_m ?? '—'} m elevation</p>
+        <p>📅 Opened ${s.opened_year ?? '—'}</p>
+        <a href="/ui/station?id=${s.station_id}">→ Explore station data</a>
+      </div>
+    `, { maxWidth: 220 });
+  }
+});
+
+// ── Station table ────────────────────────────────────────────────────────────
+const tbody = document.getElementById('station-tbody');
+if (!items.length) {
+  tbody.innerHTML = '<tr><td colspan="9" class="loading">No stations found</td></tr>';
+} else {
+  tbody.innerHTML = items.map(s => `
+    <tr>
+      <td><span class="badge">${s.station_id}</span></td>
+      <td>${s.name}</td>
+      <td>${s.region}</td>
+      <td>${s.country}</td>
+      <td>${s.latitude?.toFixed(2) ?? '—'}</td>
+      <td>${s.longitude?.toFixed(2) ?? '—'}</td>
+      <td>${s.elevation_m ?? '—'}</td>
+      <td>${s.opened_year ?? '—'}</td>
+      <td><a href="/ui/station?id=${s.station_id}">Explore →</a></td>
+    </tr>`).join('');
+}
+
+// ── All-time records ─────────────────────────────────────────────────────────
+const rec = document.getElementById('records');
+try {
+  const ext = await getExtremes();
+  const cards = [
+    { cls:'hot',  label:'Hottest Day',    val: ext.hottest_day,    unit:'°C',  key:'max_temp_c' },
+    { cls:'cold', label:'Coldest Day',    val: ext.coldest_day,    unit:'°C',  key:'min_temp_c' },
+    { cls:'rain', label:'Wettest Day',    val: ext.wettest_day,    unit:'mm',  key:'rainfall_mm' },
+    { cls:'sun',  label:'Most Sunshine',   val: ext.most_sunshine,  unit:'h',   key:'sunshine_hours' },
+  ];
+  rec.innerHTML = cards.map(c => {
+    if (!c.val) return `<div class="record-card ${c.cls}"><div class="rec-label">${c.label}</div><div class="rec-value">—</div></div>`;
+    return `
+      <div class="record-card ${c.cls}">
+        <div class="rec-label">${c.label}</div>
+        <div class="rec-value">${c.val.value}${c.unit}</div>
+        <div class="rec-meta">${fmtDate(c.val.date)} · ${c.val.station_name || c.val.station_id}</div>
+      </div>`;
+  }).join('');
+} catch(e) {
+  rec.innerHTML = `<p class="error-msg">⚠ Could not load records: ${e.message}</p>`;
+}
+</script>
+</body>
+</html>

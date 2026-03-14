@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Station Explorer · UK Climate Insights</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="logo">
+    <h2>🌦 UK Climate</h2>
+    <span>Insights Dashboard</span>
+  </div>
+  <nav>
+    <a href="/ui"><span class="icon">🗺</span> Overview</a>
+    <a href="/ui/station" class="active"><span class="icon">📍</span> Station Explorer</a>
+    <a href="/ui/trends"><span class="icon">📈</span> Trends</a>
+    <a href="/ui/compare"><span class="icon">⚖</span> Compare</a>
+    <a href="/ui/anomalies"><span class="icon">🔍</span> Anomalies</a>
+    <a href="/ui/heatmap"><span class="icon">🟦</span> Heatmap</a>
+  </nav>
+  <div class="api-link"><a href="/docs" target="_blank">📄 API Docs</a></div>
+</aside>
+
+<main id="main">
+  <div class="page-header">
+    <h1>Station Explorer</h1>
+    <p>Climate normals and seasonal breakdown for a selected station</p>
+  </div>
+
+  <!-- Station selector -->
+  <div class="controls">
+    <div>
+      <label>Station</label>
+      <select id="sel-station"></select>
+    </div>
+    <div>
+      <label>Year From</label>
+      <input type="number" id="year-from" value="1991" min="1800" max="2024" style="width:90px">
+    </div>
+    <div>
+      <label>Year To</label>
+      <input type="number" id="year-to" value="2020" min="1800" max="2024" style="width:90px">
+    </div>
+    <button id="btn-load">Load Data</button>
+  </div>
+
+  <!-- Station info -->
+  <div id="station-info"></div>
+
+  <!-- Climate normals bar chart -->
+  <div class="card" id="normals-card" style="display:none">
+    <div class="card-title">Monthly Climate Normals — Temperature & Rainfall</div>
+    <div class="chart-wrap">
+      <canvas id="chart-normals"></canvas>
+    </div>
+  </div>
+
+  <!-- Seasonal temp range -->
+  <div class="card" id="seasonal-card" style="display:none">
+    <div class="card-title">Seasonal Temperature Range (Max / Mean / Min)</div>
+    <div class="chart-wrap">
+      <canvas id="chart-seasonal"></canvas>
+    </div>
+  </div>
+
+  <!-- Summary table -->
+  <div class="card" id="table-card" style="display:none">
+    <div class="card-title">Monthly Summary Table</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Month</th><th>Season</th>
+          <th>Avg Max Temp (°C)</th><th>Avg Mean Temp (°C)</th><th>Avg Min Temp (°C)</th>
+          <th>Avg Rainfall (mm)</th><th>Avg Sunshine (h)</th>
+        </tr></thead>
+        <tbody id="summary-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script type="module">
+import { getStations, getSeasonal, applyDarkTheme, MONTH_NAMES, populateStationSelect, setError } from '/static/js/api.js';
+
+applyDarkTheme();
+
+const params = new URLSearchParams(location.search);
+const selStation = document.getElementById('sel-station');
+const yearFrom = document.getElementById('year-from');
+const yearTo = document.getElementById('year-to');
+
+// Load stations
+const data = await getStations().catch(() => []);
+const items = data; // getStations() already returns array
+populateStationSelect(selStation, items);
+
+// Pre-select if URL param given
+if (params.get('id')) {
+  const opt = [...selStation.options].find(o => o.value === params.get('id'));
+  if (opt) opt.selected = true;
+}
+
+let chartNormals = null;
+let chartSeasonal = null;
+
+async function loadStation() {
+  const sid = selStation.value;
+  const yf = yearFrom.value;
+  const yt = yearTo.value;
+  if (!sid) return;
+
+  // Station info
+  const station = items.find(s => s.station_id === sid);
+  if (station) {
+    document.getElementById('station-info').innerHTML = `
+      <div class="stat-grid" style="margin-bottom:20px">
+        <div class="stat-card"><div class="label">Station ID</div><div class="value" style="font-size:1.3rem">${station.station_id}</div></div>
+        <div class="stat-card"><div class="label">Region</div><div class="value" style="font-size:1.1rem">${station.region}</div></div>
+        <div class="stat-card"><div class="label">Elevation</div><div class="value" style="font-size:1.3rem">${station.elevation_m ?? '—'}<span style="font-size:0.9rem"> m</span></div></div>
+        <div class="stat-card"><div class="label">Opened</div><div class="value" style="font-size:1.3rem">${station.opened_year ?? '—'}</div></div>
+      </div>`;
+  }
+
+  try {
+    const seasonal = await getSeasonal(sid, 'mean_temp_c', yf, yt);
+    const months = seasonal.monthly_stats.sort((a, b) => a.month - b.month);
+    const labels = months.map(m => MONTH_NAMES[m.month - 1]);
+
+    // Climate normals — temperature + rainfall
+    const maxTemps = await getSeasonal(sid, 'max_temp_c', yf, yt);
+    const minTemps = await getSeasonal(sid, 'min_temp_c', yf, yt);
+    const rainfall = await getSeasonal(sid, 'rainfall_mm', yf, yt);
+    const maxArr = maxTemps.monthly_stats.sort((a,b)=>a.month-b.month).map(m=>m.mean?.toFixed(1));
+    const minArr = minTemps.monthly_stats.sort((a,b)=>a.month-b.month).map(m=>m.mean?.toFixed(1));
+    const rainArr = rainfall.monthly_stats.sort((a,b)=>a.month-b.month).map(m=>m.mean?.toFixed(1));
+
+    if (chartNormals) chartNormals.destroy();
+    document.getElementById('normals-card').style.display = 'block';
+    chartNormals = new Chart(document.getElementById('chart-normals'), {
+      data: {
+        labels,
+        datasets: [
+          { type:'line', label:'Max Temp (°C)', data: maxArr, borderColor:'#f05858', backgroundColor:'transparent', tension:0.4, yAxisID:'y' },
+          { type:'line', label:'Min Temp (°C)', data: minArr, borderColor:'#64b5f6', backgroundColor:'rgba(100,181,246,0.1)', fill:true, tension:0.4, yAxisID:'y' },
+          { type:'bar',  label:'Rainfall (mm)', data: rainArr, backgroundColor:'rgba(79,142,247,0.5)', yAxisID:'y2' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          y:  { title: { display:true, text:'Temperature (°C)', color:'#8b92b4' }, grid: { color:'#2e3251' }, ticks: { color:'#8b92b4' } },
+          y2: { position:'right', title:{ display:true, text:'Rainfall (mm)', color:'#8b92b4' }, grid:{ drawOnChartArea:false }, ticks:{ color:'#8b92b4' } },
+        },
+        plugins: { legend: { labels: { color:'#8b92b4' } } },
+      },
+    });
+
+    // Seasonal temp range
+    const meanArr = months.map(m => m.mean?.toFixed(1));
+    if (chartSeasonal) chartSeasonal.destroy();
+    document.getElementById('seasonal-card').style.display = 'block';
+    chartSeasonal = new Chart(document.getElementById('chart-seasonal'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label:'Max Temp', data:maxArr, borderColor:'#f05858', backgroundColor:'rgba(240,88,88,0.05)', fill:'+1', tension:0.4 },
+          { label:'Mean Temp', data:meanArr, borderColor:'#4f8ef7', backgroundColor:'rgba(79,142,247,0.1)', fill:true, tension:0.4 },
+          { label:'Min Temp', data:minArr, borderColor:'#64b5f6', backgroundColor:'rgba(100,181,246,0.05)', fill:'-1', tension:0.4 },
+        ],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'index', intersect:false },
+        scales:{
+          y:{ title:{display:true,text:'Temperature (°C)',color:'#8b92b4'}, grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+          x:{ grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+        },
+        plugins:{ legend:{ labels:{color:'#8b92b4'} } },
+      },
+    });
+
+    // Summary table
+    document.getElementById('table-card').style.display = 'block';
+    const rainByMonth = Object.fromEntries(rainfall.monthly_stats.map(m=>[m.month, m]));
+    const sunData = await getSeasonal(sid, 'sunshine_hours', yf, yt).catch(()=>({ monthly_stats:[] }));
+    const sunByMonth = Object.fromEntries(sunData.monthly_stats.map(m=>[m.month, m]));
+    document.getElementById('summary-tbody').innerHTML = months.map(m => `
+      <tr>
+        <td>${MONTH_NAMES[m.month-1]}</td>
+        <td>${m.season}</td>
+        <td>${maxArr[m.month-1] ?? '—'}</td>
+        <td>${m.mean?.toFixed(1) ?? '—'}</td>
+        <td>${minArr[m.month-1] ?? '—'}</td>
+        <td>${rainByMonth[m.month]?.mean?.toFixed(1) ?? '—'}</td>
+        <td>${sunByMonth[m.month]?.mean?.toFixed(1) ?? '—'}</td>
+      </tr>`).join('');
+
+  } catch(e) {
+    setError(document.getElementById('station-info'), e.message);
+  }
+}
+
+document.getElementById('btn-load').addEventListener('click', loadStation);
+if (items.length) loadStation();
+</script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anomalies · UK Climate Insights</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="logo">
+    <h2>🌦 UK Climate</h2>
+    <span>Insights Dashboard</span>
+  </div>
+  <nav>
+    <a href="/ui"><span class="icon">🗺</span> Overview</a>
+    <a href="/ui/station"><span class="icon">📍</span> Station Explorer</a>
+    <a href="/ui/trends"><span class="icon">📈</span> Trends</a>
+    <a href="/ui/compare"><span class="icon">⚖</span> Compare</a>
+    <a href="/ui/anomalies" class="active"><span class="icon">🔍</span> Anomalies</a>
+    <a href="/ui/heatmap"><span class="icon">🟦</span> Heatmap</a>
+  </nav>
+  <div class="api-link"><a href="/docs" target="_blank">📄 API Docs</a></div>
+</aside>
+
+<main id="main">
+  <div class="page-header">
+    <h1>Anomaly Detection</h1>
+    <p>Identify months that deviate significantly from the historical monthly average (z-score threshold)</p>
+  </div>
+
+  <div class="controls">
+    <div>
+      <label>Station</label>
+      <select id="sel-station"></select>
+    </div>
+    <div>
+      <label>Variable</label>
+      <select id="sel-var">
+        <option value="max_temp_c">Max Temperature</option>
+        <option value="mean_temp_c">Mean Temperature</option>
+        <option value="min_temp_c">Min Temperature</option>
+        <option value="rainfall_mm">Rainfall</option>
+        <option value="sunshine_hours">Sunshine Hours</option>
+      </select>
+    </div>
+    <div>
+      <label>σ Threshold: <span id="sigma-display">2.0</span></label>
+      <input type="range" id="sigma" min="0.5" max="4" step="0.5" value="2" style="width:120px;vertical-align:middle;accent-color:#4f8ef7">
+    </div>
+    <button id="btn-detect">Detect Anomalies</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stat-grid" id="anomaly-stats" style="display:none">
+    <div class="stat-card">
+      <div class="label">Anomalies Found</div>
+      <div class="value" id="anom-count" style="color:#f05858">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">σ Threshold</div>
+      <div class="value" id="anom-sigma">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Strongest Anomaly</div>
+      <div class="value" id="anom-max-sigma" style="font-size:1.1rem">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Station</div>
+      <div class="value" id="anom-station" style="font-size:1.1rem">—</div>
+    </div>
+  </div>
+
+  <!-- Bar chart: deviation_sigma per date -->
+  <div class="card" id="chart-card" style="display:none">
+    <div class="card-title" id="chart-title">Anomaly Deviation (σ) by Date</div>
+    <div class="chart-wrap tall">
+      <canvas id="chart-anom"></canvas>
+    </div>
+  </div>
+
+  <!-- Scatter: value vs monthly mean -->
+  <div class="card" id="scatter-card" style="display:none">
+    <div class="card-title" id="scatter-title">Anomaly Values vs Monthly Mean</div>
+    <div class="chart-wrap">
+      <canvas id="chart-scatter"></canvas>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card" id="table-card" style="display:none">
+    <div class="card-title">Anomalous Months (sorted by |σ|)</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Value</th><th>Monthly Mean</th><th>Deviation (σ)</th><th>Direction</th></tr></thead>
+        <tbody id="anom-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="msg"></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script type="module">
+import { getStations, getAnomalies, applyDarkTheme, PALETTE, setError, populateStationSelect, fmtDate } from '/static/js/api.js';
+
+applyDarkTheme();
+
+const data = await getStations().catch(()=>[]);
+const items = data; // getStations() already returns array
+const selStation = document.getElementById('sel-station');
+populateStationSelect(selStation, items);
+const hw = [...selStation.options].find(o=>o.value==='HEATHROW');
+if (hw) hw.selected = true;
+
+const sigmaRange = document.getElementById('sigma');
+const sigmaDisplay = document.getElementById('sigma-display');
+sigmaRange.addEventListener('input', () => { sigmaDisplay.textContent = sigmaRange.value; });
+
+let chartAnom = null, chartScatter = null;
+
+document.getElementById('btn-detect').addEventListener('click', async () => {
+  const sid = selStation.value;
+  const variable = document.getElementById('sel-var').value;
+  const sigma = parseFloat(sigmaRange.value);
+  const msg = document.getElementById('msg');
+  msg.innerHTML = '<p class="loading">Analysing…</p>';
+
+  const varLabels = { mean_temp_c:'Mean Temp (°C)', max_temp_c:'Max Temp (°C)', min_temp_c:'Min Temp (°C)', rainfall_mm:'Rainfall (mm)', sunshine_hours:'Sunshine (h)' };
+  const unit = { mean_temp_c:'°C', max_temp_c:'°C', min_temp_c:'°C', rainfall_mm:'mm', sunshine_hours:'h' }[variable];
+
+  try {
+    const res = await getAnomalies(sid, variable, sigma);
+    msg.innerHTML = '';
+
+    const anomList = res.anomalies || [];
+    const sorted = [...anomList].sort((a,b) => Math.abs(b.deviation_sigma) - Math.abs(a.deviation_sigma));
+
+    document.getElementById('anomaly-stats').style.display = 'grid';
+    document.getElementById('anom-count').textContent = anomList.length;
+    document.getElementById('anom-sigma').textContent = `±${sigma}σ`;
+    document.getElementById('anom-max-sigma').textContent = sorted[0]
+      ? `${sorted[0].deviation_sigma?.toFixed(2)}σ (${fmtDate(sorted[0].date)})`
+      : '—';
+    document.getElementById('anom-station').textContent = sid;
+
+    if (!anomList.length) {
+      msg.innerHTML = `<p class="loading">No anomalies found above ±${sigma}σ threshold.</p>`;
+      return;
+    }
+
+    // Bar chart — deviation_sigma per date
+    document.getElementById('chart-card').style.display = 'block';
+    document.getElementById('chart-title').textContent = `${varLabels[variable]} Anomalies — ${sid} (±${sigma}σ)`;
+
+    const byDate = [...anomList].sort((a,b)=>a.date.localeCompare(b.date));
+    const labels = byDate.map(a => a.date);
+    const sigmaVals = byDate.map(a => a.deviation_sigma?.toFixed(3));
+    const barColors = sigmaVals.map(v => parseFloat(v) > 0 ? '#f05858bb' : '#64b5f6bb');
+    const borderColors = sigmaVals.map(v => parseFloat(v) > 0 ? '#f05858' : '#64b5f6');
+
+    if (chartAnom) chartAnom.destroy();
+    chartAnom = new Chart(document.getElementById('chart-anom'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Deviation (σ)',
+          data: sigmaVals,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1,
+          borderRadius: 3,
+        }],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        scales:{
+          x:{ ticks:{color:'#8b92b4', maxRotation:45, maxTicksLimit:20}, grid:{color:'#2e3251'} },
+          y:{ title:{display:true, text:'Standard Deviations (σ)', color:'#8b92b4'}, grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+        },
+        plugins:{ legend:{display:false},
+          tooltip:{ callbacks:{ label: ctx => `${ctx.raw}σ — value: ${byDate[ctx.dataIndex]?.value?.toFixed(1)}${unit}` } } },
+      },
+    });
+
+    // Scatter — value vs monthly_mean
+    document.getElementById('scatter-card').style.display = 'block';
+    document.getElementById('scatter-title').textContent = `Anomaly Values vs Monthly Mean — ${sid}`;
+    const scatterPoints = anomList.map(a => ({ x: a.monthly_mean, y: a.value, date: a.date, sigma: a.deviation_sigma?.toFixed(2) }));
+
+    if (chartScatter) chartScatter.destroy();
+    chartScatter = new Chart(document.getElementById('chart-scatter'), {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: 'Anomalous month',
+          data: scatterPoints.map(p=>({x:p.x, y:p.y})),
+          backgroundColor: scatterPoints.map(p => parseFloat(p.sigma)>0 ? '#f05858aa' : '#64b5f6aa'),
+          borderColor: scatterPoints.map(p => parseFloat(p.sigma)>0 ? '#f05858' : '#64b5f6'),
+          pointRadius: 6,
+          pointHoverRadius: 8,
+        }],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        scales:{
+          x:{ title:{display:true, text:`Monthly Mean (${unit})`, color:'#8b92b4'}, grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+          y:{ title:{display:true, text:`Observed Value (${unit})`, color:'#8b92b4'}, grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+        },
+        plugins:{ legend:{display:false},
+          tooltip:{ callbacks:{ label: (ctx) => {
+            const p = scatterPoints[ctx.dataIndex];
+            return `${fmtDate(p?.date)}: ${ctx.raw.y?.toFixed(1)}${unit} (${p?.sigma}σ)`;
+          }}},
+        },
+      },
+    });
+
+    // Table
+    document.getElementById('table-card').style.display = 'block';
+    document.getElementById('anom-tbody').innerHTML = sorted.map(a => `
+      <tr>
+        <td>${fmtDate(a.date)}</td>
+        <td>${a.value?.toFixed(2)}${unit}</td>
+        <td>${a.monthly_mean?.toFixed(2)}${unit}</td>
+        <td style="color:${Math.abs(a.deviation_sigma)>3?'#f05858':'#f5c842'}">${a.deviation_sigma?.toFixed(3)}σ</td>
+        <td>${a.deviation_sigma > 0 ? '<span style="color:#f05858">▲ Above avg</span>' : '<span style="color:#64b5f6">▼ Below avg</span>'}</td>
+      </tr>`).join('');
+
+  } catch(e) {
+    msg.innerHTML = '';
+    setError(msg, e.message);
+  }
+});
+
+if (items.length) document.getElementById('btn-detect').click();
+</script>
+</body>
+</html>

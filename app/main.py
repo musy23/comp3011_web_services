@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -90,5 +92,23 @@ async def root():
         "message": "UK Climate Insights API",
         "docs": "/docs",
         "redoc": "/redoc",
+        "dashboard": "/ui",
         "version": settings.api_version,
     }
+
+
+# ── Frontend dashboard (static files) ────────────────────────────────────────
+_STATIC_DIR = Path(__file__).parent.parent / "static"
+if _STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+    @app.get("/ui", include_in_schema=False)
+    async def dashboard_home():
+        return FileResponse(str(_STATIC_DIR / "index.html"))
+
+    @app.get("/ui/{page}", include_in_schema=False)
+    async def dashboard_page(page: str):
+        html_file = _STATIC_DIR / f"{page}.html"
+        if html_file.exists():
+            return FileResponse(str(html_file))
+        return FileResponse(str(_STATIC_DIR / "index.html"))
