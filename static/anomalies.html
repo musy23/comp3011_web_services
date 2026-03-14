@@ -30,6 +30,55 @@
     <p>Identify months that deviate significantly from the historical monthly average (z-score threshold)</p>
   </div>
 
+  <!-- Explanation panel -->
+  <div class="card" style="margin-bottom:16px">
+    <details>
+      <summary style="cursor:pointer;font-weight:600;color:var(--text);font-size:0.95rem;list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+        <span id="explain-arrow" style="font-size:0.8rem;color:var(--muted);transition:transform 0.2s">▶</span>
+        How does anomaly detection work?
+      </summary>
+      <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">① What is a σ (sigma)?</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            σ (sigma) is a <strong style="color:var(--text)">standard deviation</strong> — a unit that measures how far a value is from the average.
+            A value of <strong style="color:var(--text)">0σ</strong> is exactly average.
+            <strong style="color:#f05858">+2σ</strong> means 2 standard deviations <em>above</em> normal — unusually high.
+            <strong style="color:#64b5f6">−2σ</strong> means unusually low.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">② How is it calculated?</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            For each calendar month (e.g. all Julys ever recorded), the system calculates the <strong style="color:var(--text)">long-term average and spread</strong>.
+            Each month's observation is then scored:<br>
+            <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:0.82rem;color:var(--yellow)">σ = (value − monthly mean) ÷ std deviation</code>
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">③ What does the threshold do?</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Only months exceeding the threshold are flagged. At <strong style="color:var(--text)">±2σ</strong> roughly 5% of months are anomalous by chance.
+            Raise it to <strong style="color:var(--text)">±3σ</strong> to see only the most extreme events (less than 0.3% probability).
+            Lower it to <strong style="color:var(--text)">±1σ</strong> to see subtle deviations.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">④ What can you find?</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Try <strong style="color:var(--text)">Heathrow · Max Temperature · ±2σ</strong> — the <strong style="color:#f05858">2003 European heatwave</strong> (Aug 2003) should appear near the top.
+            Or <strong style="color:var(--text)">Durham · Rainfall · ±2σ</strong> to find the wettest and driest months on record.
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
   <div class="controls">
     <div>
       <label>Station</label>
@@ -46,7 +95,7 @@
       </select>
     </div>
     <div>
-      <label>σ Threshold: <span id="sigma-display">2.0</span></label>
+      <label title="Lower = more anomalies flagged. Higher = only extreme outliers. ±2σ is the standard statistical threshold.">σ Threshold: <span id="sigma-display">2.0</span> <span style="font-size:0.75rem;color:var(--muted)" id="sigma-hint">(~5% of months flagged)</span></label>
       <input type="range" id="sigma" min="0.5" max="4" step="0.5" value="2" style="width:120px;vertical-align:middle;accent-color:#4f8ef7">
     </div>
     <button id="btn-detect">Detect Anomalies</button>
@@ -75,6 +124,12 @@
   <!-- Bar chart: deviation_sigma per date -->
   <div class="card" id="chart-card" style="display:none">
     <div class="card-title" id="chart-title">Anomaly Deviation (σ) by Date</div>
+    <p style="color:var(--muted);font-size:0.82rem;margin-bottom:12px">
+      Each bar shows how far that month deviated from its historical average, measured in standard deviations (σ).
+      <span style="color:#f05858">■ Red bars</span> = warmer/wetter/sunnier than normal.
+      <span style="color:#64b5f6">■ Blue bars</span> = cooler/drier than normal.
+      Hover a bar to see the actual recorded value.
+    </p>
     <div class="chart-wrap tall">
       <canvas id="chart-anom"></canvas>
     </div>
@@ -83,6 +138,12 @@
   <!-- Scatter: value vs monthly mean -->
   <div class="card" id="scatter-card" style="display:none">
     <div class="card-title" id="scatter-title">Anomaly Values vs Monthly Mean</div>
+    <p style="color:var(--muted);font-size:0.82rem;margin-bottom:12px">
+      Each dot is one anomalous month. The <strong style="color:var(--text)">horizontal axis</strong> shows what the long-term average for that month is;
+      the <strong style="color:var(--text)">vertical axis</strong> shows what was actually recorded.
+      Points far above the diagonal line were significantly higher than usual; points below were lower.
+      Hover a dot to see the date and exact deviation.
+    </p>
     <div class="chart-wrap">
       <canvas id="chart-scatter"></canvas>
     </div>
@@ -91,6 +152,10 @@
   <!-- Table -->
   <div class="card" id="table-card" style="display:none">
     <div class="card-title">Anomalous Months (sorted by |σ|)</div>
+    <p style="color:var(--muted);font-size:0.82rem;margin-bottom:12px">
+      Sorted strongest-first. <strong style="color:var(--text)">Deviation (σ)</strong> shows how many standard deviations above or below normal the month was —
+      anything beyond ±3σ is highlighted red as an extreme event.
+    </p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Date</th><th>Value</th><th>Monthly Mean</th><th>Deviation (σ)</th><th>Direction</th></tr></thead>
@@ -108,6 +173,11 @@ import { getStations, getAnomalies, applyDarkTheme, PALETTE, setError, populateS
 
 applyDarkTheme();
 
+// Toggle arrow on explain panel
+document.querySelector('details').addEventListener('toggle', function() {
+  document.getElementById('explain-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+});
+
 const data = await getStations().catch(()=>[]);
 const items = data; // getStations() already returns array
 const selStation = document.getElementById('sel-station');
@@ -117,7 +187,16 @@ if (hw) hw.selected = true;
 
 const sigmaRange = document.getElementById('sigma');
 const sigmaDisplay = document.getElementById('sigma-display');
-sigmaRange.addEventListener('input', () => { sigmaDisplay.textContent = sigmaRange.value; });
+const sigmaHints = {
+  '0.5': '~62% of months flagged', '1': '~32% of months flagged',
+  '1.5': '~13% of months flagged', '2': '~5% of months flagged',
+  '2.5': '~1% of months flagged', '3': '<0.3% of months flagged',
+  '3.5': 'only extreme outliers', '4': 'only extreme outliers',
+};
+sigmaRange.addEventListener('input', () => {
+  sigmaDisplay.textContent = sigmaRange.value;
+  document.getElementById('sigma-hint').textContent = `(${sigmaHints[sigmaRange.value] || ''})`;
+});
 
 function freshCanvas(chart, canvasId) {
   if (chart) { chart.destroy(); }
