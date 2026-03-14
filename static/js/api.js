@@ -70,11 +70,13 @@ export function applyDarkTheme() {
   Chart.defaults.plugins.tooltip.borderWidth = 1;
   Chart.defaults.plugins.tooltip.titleColor = '#e2e6f3';
   Chart.defaults.plugins.tooltip.bodyColor = '#8b92b4';
-  Chart.defaults.scale = {
-    ...Chart.defaults.scale,
-    grid: { color: '#2e3251' },
-    ticks: { color: '#8b92b4' },
-  };
+  // Chart.js 4.x: configure scale defaults via Chart.defaults.scales
+  ['linear', 'category', 'radialLinear', 'time', 'logarithmic'].forEach(type => {
+    if (Chart.defaults.scales[type]) {
+      Chart.defaults.scales[type].grid = { color: '#2e3251' };
+      Chart.defaults.scales[type].ticks = { color: '#8b92b4' };
+    }
+  });
 }
 
 export const PALETTE = [

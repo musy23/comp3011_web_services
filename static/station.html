@@ -30,7 +30,6 @@
     <p>Climate normals and seasonal breakdown for a selected station</p>
   </div>
 
-  <!-- Station selector -->
   <div class="controls">
     <div>
       <label>Station</label>
@@ -47,10 +46,8 @@
     <button id="btn-load">Load Data</button>
   </div>
 
-  <!-- Station info -->
   <div id="station-info"></div>
 
-  <!-- Climate normals bar chart -->
   <div class="card" id="normals-card" style="display:none">
     <div class="card-title">Monthly Climate Normals — Temperature & Rainfall</div>
     <div class="chart-wrap">
@@ -58,7 +55,6 @@
     </div>
   </div>
 
-  <!-- Seasonal temp range -->
   <div class="card" id="seasonal-card" style="display:none">
     <div class="card-title">Seasonal Temperature Range (Max / Mean / Min)</div>
     <div class="chart-wrap">
@@ -66,7 +62,6 @@
     </div>
   </div>
 
-  <!-- Summary table -->
   <div class="card" id="table-card" style="display:none">
     <div class="card-title">Monthly Summary Table</div>
     <div class="table-wrap">
@@ -80,6 +75,8 @@
       </table>
     </div>
   </div>
+
+  <div id="msg"></div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -90,18 +87,29 @@ applyDarkTheme();
 
 const params = new URLSearchParams(location.search);
 const selStation = document.getElementById('sel-station');
-const yearFrom = document.getElementById('year-from');
-const yearTo = document.getElementById('year-to');
+const yearFromEl = document.getElementById('year-from');
+const yearToEl = document.getElementById('year-to');
 
-// Load stations
-const data = await getStations().catch(() => []);
-const items = data; // getStations() already returns array
+const items = await getStations().catch(() => []);
 populateStationSelect(selStation, items);
 
-// Pre-select if URL param given
 if (params.get('id')) {
   const opt = [...selStation.options].find(o => o.value === params.get('id'));
   if (opt) opt.selected = true;
+}
+
+// Destroy a chart and clear its canvas so Chart.js can reuse it
+function destroyChart(chart, canvasId) {
+  if (chart) {
+    chart.destroy();
+  }
+  // Reset canvas by replacing it with a fresh clone
+  const old = document.getElementById(canvasId);
+  if (old) {
+    const fresh = old.cloneNode(false);
+    old.parentNode.replaceChild(fresh, old);
+  }
+  return null;
 }
 
 let chartNormals = null;
@@ -109,11 +117,14 @@ let chartSeasonal = null;
 
 async function loadStation() {
   const sid = selStation.value;
-  const yf = yearFrom.value;
-  const yt = yearTo.value;
+  const yf = parseInt(yearFromEl.value);
+  const yt = parseInt(yearToEl.value);
   if (!sid) return;
 
-  // Station info
+  const msg = document.getElementById('msg');
+  msg.innerHTML = '<p class="loading">Loading station data…</p>';
+
+  // Station info card
   const station = items.find(s => s.station_id === sid);
   if (station) {
     document.getElementById('station-info').innerHTML = `
@@ -126,83 +137,101 @@ async function loadStation() {
   }
 
   try {
-    const seasonal = await getSeasonal(sid, 'mean_temp_c', yf, yt);
-    const months = seasonal.monthly_stats.sort((a, b) => a.month - b.month);
-    const labels = months.map(m => MONTH_NAMES[m.month - 1]);
+    // Fetch all four variables in parallel
+    const [meanRes, maxRes, minRes, rainRes, sunRes] = await Promise.all([
+      getSeasonal(sid, 'mean_temp_c', yf, yt),
+      getSeasonal(sid, 'max_temp_c', yf, yt),
+      getSeasonal(sid, 'min_temp_c', yf, yt),
+      getSeasonal(sid, 'rainfall_mm', yf, yt),
+      getSeasonal(sid, 'sunshine_hours', yf, yt).catch(() => ({ monthly_stats: [] })),
+    ]);
+    msg.innerHTML = '';
 
-    // Climate normals — temperature + rainfall
-    const maxTemps = await getSeasonal(sid, 'max_temp_c', yf, yt);
-    const minTemps = await getSeasonal(sid, 'min_temp_c', yf, yt);
-    const rainfall = await getSeasonal(sid, 'rainfall_mm', yf, yt);
-    const maxArr = maxTemps.monthly_stats.sort((a,b)=>a.month-b.month).map(m=>m.mean?.toFixed(1));
-    const minArr = minTemps.monthly_stats.sort((a,b)=>a.month-b.month).map(m=>m.mean?.toFixed(1));
-    const rainArr = rainfall.monthly_stats.sort((a,b)=>a.month-b.month).map(m=>m.mean?.toFixed(1));
+    // Build lookup maps by month number (1–12)
+    function toMap(res) {
+      return Object.fromEntries(res.monthly_stats.map(m => [m.month, m]));
+    }
+    const meanMap = toMap(meanRes);
+    const maxMap  = toMap(maxRes);
+    const minMap  = toMap(minRes);
+    const rainMap = toMap(rainRes);
+    const sunMap  = toMap(sunRes);
 
-    if (chartNormals) chartNormals.destroy();
+    // Build ordered arrays for months 1–12 (fill null for missing)
+    const allMonths = Array.from({length: 12}, (_, i) => i + 1);
+    const labels   = allMonths.map(m => MONTH_NAMES[m - 1]);
+    const meanArr  = allMonths.map(m => meanMap[m]?.mean  ?? null);
+    const maxArr   = allMonths.map(m => maxMap[m]?.mean   ?? null);
+    const minArr   = allMonths.map(m => minMap[m]?.mean   ?? null);
+    const rainArr  = allMonths.map(m => rainMap[m]?.mean  ?? null);
+    const sunArr   = allMonths.map(m => sunMap[m]?.mean   ?? null);
+    const seasons  = allMonths.map(m => meanMap[m]?.season ?? '');
+
+    // ── Climate normals chart ──────────────────────────────────────────────
+    chartNormals = destroyChart(chartNormals, 'chart-normals');
     document.getElementById('normals-card').style.display = 'block';
     chartNormals = new Chart(document.getElementById('chart-normals'), {
       data: {
         labels,
         datasets: [
-          { type:'line', label:'Max Temp (°C)', data: maxArr, borderColor:'#f05858', backgroundColor:'transparent', tension:0.4, yAxisID:'y' },
-          { type:'line', label:'Min Temp (°C)', data: minArr, borderColor:'#64b5f6', backgroundColor:'rgba(100,181,246,0.1)', fill:true, tension:0.4, yAxisID:'y' },
-          { type:'bar',  label:'Rainfall (mm)', data: rainArr, backgroundColor:'rgba(79,142,247,0.5)', yAxisID:'y2' },
+          { type:'line', label:'Max Temp (°C)',  data: maxArr,  borderColor:'#f05858', backgroundColor:'transparent', tension:0.4, yAxisID:'y', pointRadius:4 },
+          { type:'line', label:'Mean Temp (°C)', data: meanArr, borderColor:'#4f8ef7', backgroundColor:'transparent', tension:0.4, yAxisID:'y', pointRadius:4 },
+          { type:'line', label:'Min Temp (°C)',  data: minArr,  borderColor:'#64b5f6', backgroundColor:'transparent', tension:0.4, yAxisID:'y', pointRadius:4 },
+          { type:'bar',  label:'Rainfall (mm)',  data: rainArr, backgroundColor:'rgba(79,142,247,0.4)', borderColor:'rgba(79,142,247,0.8)', borderWidth:1, yAxisID:'y2' },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         scales: {
-          y:  { title: { display:true, text:'Temperature (°C)', color:'#8b92b4' }, grid: { color:'#2e3251' }, ticks: { color:'#8b92b4' } },
+          y:  { title:{ display:true, text:'Temperature (°C)', color:'#8b92b4' }, grid:{ color:'#2e3251' }, ticks:{ color:'#8b92b4' } },
           y2: { position:'right', title:{ display:true, text:'Rainfall (mm)', color:'#8b92b4' }, grid:{ drawOnChartArea:false }, ticks:{ color:'#8b92b4' } },
+          x:  { grid:{ color:'#2e3251' }, ticks:{ color:'#8b92b4' } },
         },
-        plugins: { legend: { labels: { color:'#8b92b4' } } },
+        plugins: { legend:{ labels:{ color:'#8b92b4' } } },
       },
     });
 
-    // Seasonal temp range
-    const meanArr = months.map(m => m.mean?.toFixed(1));
-    if (chartSeasonal) chartSeasonal.destroy();
+    // ── Seasonal temp range chart (no fill references — causes stack overflow) ──
+    chartSeasonal = destroyChart(chartSeasonal, 'chart-seasonal');
     document.getElementById('seasonal-card').style.display = 'block';
     chartSeasonal = new Chart(document.getElementById('chart-seasonal'), {
       type: 'line',
       data: {
         labels,
         datasets: [
-          { label:'Max Temp', data:maxArr, borderColor:'#f05858', backgroundColor:'rgba(240,88,88,0.05)', fill:'+1', tension:0.4 },
-          { label:'Mean Temp', data:meanArr, borderColor:'#4f8ef7', backgroundColor:'rgba(79,142,247,0.1)', fill:true, tension:0.4 },
-          { label:'Min Temp', data:minArr, borderColor:'#64b5f6', backgroundColor:'rgba(100,181,246,0.05)', fill:'-1', tension:0.4 },
+          { label:'Max Temp', data:maxArr,  borderColor:'#f05858', backgroundColor:'rgba(240,88,88,0.15)', fill:false, tension:0.4, pointRadius:4 },
+          { label:'Mean Temp', data:meanArr, borderColor:'#4f8ef7', backgroundColor:'rgba(79,142,247,0.15)', fill:false, tension:0.4, pointRadius:4 },
+          { label:'Min Temp', data:minArr,  borderColor:'#64b5f6', backgroundColor:'rgba(100,181,246,0.15)', fill:false, tension:0.4, pointRadius:4 },
         ],
       },
       options: {
         responsive:true, maintainAspectRatio:false,
         interaction:{ mode:'index', intersect:false },
         scales:{
-          y:{ title:{display:true,text:'Temperature (°C)',color:'#8b92b4'}, grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
-          x:{ grid:{color:'#2e3251'}, ticks:{color:'#8b92b4'} },
+          y:{ title:{ display:true, text:'Temperature (°C)', color:'#8b92b4' }, grid:{ color:'#2e3251' }, ticks:{ color:'#8b92b4' } },
+          x:{ grid:{ color:'#2e3251' }, ticks:{ color:'#8b92b4' } },
         },
-        plugins:{ legend:{ labels:{color:'#8b92b4'} } },
+        plugins:{ legend:{ labels:{ color:'#8b92b4' } } },
       },
     });
 
-    // Summary table
+    // ── Summary table ──────────────────────────────────────────────────────
     document.getElementById('table-card').style.display = 'block';
-    const rainByMonth = Object.fromEntries(rainfall.monthly_stats.map(m=>[m.month, m]));
-    const sunData = await getSeasonal(sid, 'sunshine_hours', yf, yt).catch(()=>({ monthly_stats:[] }));
-    const sunByMonth = Object.fromEntries(sunData.monthly_stats.map(m=>[m.month, m]));
-    document.getElementById('summary-tbody').innerHTML = months.map(m => `
+    document.getElementById('summary-tbody').innerHTML = allMonths.map(m => `
       <tr>
-        <td>${MONTH_NAMES[m.month-1]}</td>
-        <td>${m.season}</td>
-        <td>${maxArr[m.month-1] ?? '—'}</td>
-        <td>${m.mean?.toFixed(1) ?? '—'}</td>
-        <td>${minArr[m.month-1] ?? '—'}</td>
-        <td>${rainByMonth[m.month]?.mean?.toFixed(1) ?? '—'}</td>
-        <td>${sunByMonth[m.month]?.mean?.toFixed(1) ?? '—'}</td>
+        <td>${MONTH_NAMES[m - 1]}</td>
+        <td>${seasons[m - 1] || '—'}</td>
+        <td>${maxArr[m - 1]?.toFixed(1)  ?? '—'}</td>
+        <td>${meanArr[m - 1]?.toFixed(1) ?? '—'}</td>
+        <td>${minArr[m - 1]?.toFixed(1)  ?? '—'}</td>
+        <td>${rainArr[m - 1]?.toFixed(1) ?? '—'}</td>
+        <td>${sunArr[m - 1]?.toFixed(1)  ?? '—'}</td>
       </tr>`).join('');
 
   } catch(e) {
-    setError(document.getElementById('station-info'), e.message);
+    msg.innerHTML = '';
+    setError(document.getElementById('msg'), e.message);
   }
 }
 

@@ -93,7 +93,7 @@ const obsCount = await apiFetch('/observations?limit=1').catch(() => null);
 document.getElementById('ob-count').textContent = obsCount?.pagination?.total != null
   ? obsCount.pagination.total.toLocaleString() : '11,081';
 document.getElementById('ob-oldest').textContent = '1853-01';
-document.getElementById('ob-latest').textContent = '2024-12';
+document.getElementById('ob-latest').textContent = '2026-02';
 
 // ── Map ──────────────────────────────────────────────────────────────────────
 const map = L.map('map', { center: [54.5, -3.5], zoom: 6 });

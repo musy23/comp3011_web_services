@@ -143,8 +143,11 @@ document.getElementById('btn-run').addEventListener('click', async () => {
     const varLabels = { mean_temp_c:'Mean Temp (°C)', max_temp_c:'Max Temp (°C)', min_temp_c:'Min Temp (°C)', rainfall_mm:'Rainfall (mm)', sunshine_hours:'Sunshine (h)' };
     document.getElementById('chart-title').textContent = `${varLabels[variable] || variable} — ${res.station_id}`;
 
-    if (chart) chart.destroy();
-    chart = new Chart(document.getElementById('chart-trend'), {
+    if (chart) { chart.destroy(); chart = null; }
+    const old = document.getElementById('chart-trend');
+    const canvas = old.cloneNode(false);
+    old.parentNode.replaceChild(canvas, old);
+    chart = new Chart(canvas, {
       data: {
         labels,
         datasets: [

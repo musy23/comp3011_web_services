@@ -179,7 +179,7 @@ def parse_metoffice_file(filepath: str) -> list[dict]:
             except ValueError:
                 continue
 
-            if year < 1800 or year > 2025 or month < 1 or month > 12:
+            if year < 1800 or year > 2030 or month < 1 or month > 12:
                 continue
 
             tmax = parse_val(parts[2]) if len(parts) > 2 else None

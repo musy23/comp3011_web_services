@@ -6,62 +6,96 @@
   <title>Heatmap · UK Climate Insights</title>
   <link rel="stylesheet" href="/static/css/style.css">
   <style>
-    .hm-legend {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 16px;
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
-    .hm-legend-bar {
-      flex: 1;
-      height: 10px;
-      border-radius: 4px;
-      background: linear-gradient(to right, #1e3a5f, #2563eb, #34c78a, #f5c842, #f05858);
-      max-width: 300px;
-    }
-    .month-label {
+    /* ── Grid layout: years × months ───────────────────────────── */
+    .hm-table-wrap { overflow-x: auto; }
+    .hm-table {
+      border-collapse: separate;
+      border-spacing: 3px;
       font-size: 0.72rem;
+      min-width: 640px;
+    }
+    .hm-table th {
+      background: transparent;
       color: var(--muted);
+      font-weight: 600;
       text-align: center;
-      margin-top: 4px;
+      padding: 4px 6px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border: none;
     }
-    .heatmap-container {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 4px;
+    .hm-table td.year-label {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-align: right;
+      padding-right: 10px;
+      white-space: nowrap;
+      border: none;
+      background: transparent;
     }
-    .hm-col {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .hm-cell-sq {
-      width: 100%;
-      aspect-ratio: 1;
+    .hm-cell {
+      width: 46px;
+      height: 28px;
       border-radius: 4px;
+      text-align: center;
+      vertical-align: middle;
       cursor: default;
       position: relative;
-      transition: transform 0.1s;
+      transition: transform 0.1s, box-shadow 0.1s;
+      border: none;
     }
-    .hm-cell-sq:hover { transform: scale(1.15); z-index: 2; }
-    .hm-cell-sq::after {
+    .hm-cell:hover {
+      transform: scale(1.18);
+      z-index: 5;
+      box-shadow: 0 0 0 2px #fff3;
+    }
+    .hm-cell::after {
       content: attr(data-tip);
       position: absolute;
-      bottom: 120%;
+      bottom: 130%;
       left: 50%;
       transform: translateX(-50%);
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 4px;
-      padding: 4px 8px;
-      font-size: 0.72rem;
+      padding: 4px 10px;
+      font-size: 0.73rem;
       white-space: nowrap;
-      z-index: 10;
+      z-index: 20;
+      pointer-events: none;
       display: none;
     }
-    .hm-cell-sq:hover::after { display: block; }
+    .hm-cell:hover::after { display: block; }
+    .hm-cell.empty { background: #1e2235 !important; }
+
+    /* ── Legend ─────────────────────────────────────────────────── */
+    .hm-legend {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .hm-legend-bar {
+      flex: 1;
+      max-width: 280px;
+      height: 10px;
+      border-radius: 4px;
+    }
+
+    /* ── Stats bar ──────────────────────────────────────────────── */
+    .hm-stats {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      font-size: 0.82rem;
+    }
+    .hm-stat { color: var(--muted); }
+    .hm-stat strong { color: var(--text); }
   </style>
 </head>
 <body>
@@ -84,8 +118,8 @@
 
 <main id="main">
   <div class="page-header">
-    <h1>Calendar Heatmap</h1>
-    <p>Monthly climate values visualised as a colour-coded grid across years</p>
+    <h1>Climate Heatmap</h1>
+    <p>Year × month grid — colour intensity shows the variable value, revealing seasonal patterns and long-term trends at a glance</p>
   </div>
 
   <div class="controls">
@@ -104,129 +138,281 @@
       </select>
     </div>
     <div>
-      <label>Year</label>
-      <input type="number" id="year" value="2020" min="1800" max="2024" style="width:90px">
+      <label>Year From</label>
+      <input type="number" id="year-start" value="1980" min="1800" max="2026" style="width:85px">
     </div>
     <div>
-      <label>Multi-year (from → to)</label>
-      <input type="number" id="year-start" placeholder="1990" min="1800" max="2024" style="width:80px">
-      <span style="color:var(--muted);padding:0 4px">→</span>
-      <input type="number" id="year-end" placeholder="2024" min="1800" max="2024" style="width:80px">
+      <label>Year To</label>
+      <input type="number" id="year-end" value="2026" min="1800" max="2026" style="width:85px">
     </div>
     <button id="btn-load">Show Heatmap</button>
   </div>
 
-  <div id="heatmap-wrap"></div>
+  <!-- Main heatmap grid -->
+  <div class="card" id="heatmap-card" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" id="hm-title" style="margin-bottom:0">Heatmap</div>
+      <div class="hm-stats" id="hm-stats"></div>
+    </div>
+    <div class="hm-table-wrap">
+      <table class="hm-table" id="hm-table"></table>
+    </div>
+    <div class="hm-legend" id="hm-legend"></div>
+  </div>
+
+  <!-- Monthly average line chart -->
+  <div class="card" id="avg-card" style="display:none">
+    <div class="card-title" id="avg-title">Long-term Monthly Averages</div>
+    <div class="chart-wrap">
+      <canvas id="chart-avg"></canvas>
+    </div>
+  </div>
+
+  <!-- Annual average line chart -->
+  <div class="card" id="annual-card" style="display:none">
+    <div class="card-title" id="annual-title">Annual Average Over Time</div>
+    <div class="chart-wrap">
+      <canvas id="chart-annual"></canvas>
+    </div>
+  </div>
+
   <div id="msg"></div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script type="module">
-import { getStations, getHeatmap, setError, populateStationSelect, MONTH_NAMES } from '/static/js/api.js';
+import { getStations, getHeatmap, applyDarkTheme, MONTH_NAMES, setError, populateStationSelect } from '/static/js/api.js';
 
-const data = await getStations().catch(()=>[]);
-const items = data; // getStations() already returns array
+applyDarkTheme();
+
+const items = await getStations().catch(() => []);
 const selStation = document.getElementById('sel-station');
 populateStationSelect(selStation, items);
-const ox = [...selStation.options].find(o=>o.value==='OXFORD');
+const ox = [...selStation.options].find(o => o.value === 'OXFORD');
 if (ox) ox.selected = true;
 
+// ── Color helpers ────────────────────────────────────────────────────────────
 function lerp(a, b, t) { return a + (b - a) * t; }
-function lerpColor(c1, c2, t) {
-  const hex = h => parseInt(h, 16);
-  const r = Math.round(lerp(hex(c1.slice(1,3)), hex(c2.slice(1,3)), t));
-  const g = Math.round(lerp(hex(c1.slice(3,5)), hex(c2.slice(3,5)), t));
-  const b2 = Math.round(lerp(hex(c1.slice(5,7)), hex(c2.slice(5,7)), t));
-  return `rgb(${r},${g},${b2})`;
+function lerpHex(c1, c2, t) {
+  const h = s => parseInt(s, 16);
+  const r = Math.round(lerp(h(c1.slice(1,3)), h(c2.slice(1,3)), t));
+  const g = Math.round(lerp(h(c1.slice(3,5)), h(c2.slice(3,5)), t));
+  const b = Math.round(lerp(h(c1.slice(5,7)), h(c2.slice(5,7)), t));
+  return `rgb(${r},${g},${b})`;
 }
 
 function valueToColor(val, min, max, variable) {
-  if (val == null) return '#22263a';
-  const t = max === min ? 0.5 : (val - min) / (max - min);
+  if (val == null) return null; // null = empty cell
+  const t = max === min ? 0.5 : Math.max(0, Math.min(1, (val - min) / (max - min)));
   if (variable === 'rainfall_mm') {
-    // Blue gradient for rain
-    return lerpColor('#1e3a5f', '#4f8ef7', t);
+    return lerpHex('#1a2a45', '#3b82f6', t);
   }
   if (variable === 'sunshine_hours') {
-    return lerpColor('#1a1d27', '#f5c842', t);
+    return lerpHex('#1a1d27', '#f5c842', t);
   }
-  // Temperature: blue → green → yellow → red
-  if (t < 0.25) return lerpColor('#1e4488', '#34c78a', t * 4);
-  if (t < 0.5) return lerpColor('#34c78a', '#f5c842', (t - 0.25) * 4);
-  return lerpColor('#f5c842', '#f05858', (t - 0.5) * 2);
+  // Temperature: cold blue → teal → yellow → hot red
+  if (t < 0.33) return lerpHex('#1e3a8a', '#06b6d4', t * 3);
+  if (t < 0.66) return lerpHex('#06b6d4', '#f5c842', (t - 0.33) * 3);
+  return lerpHex('#f5c842', '#ef4444', (t - 0.66) * 3);
 }
+
+function legendGradient(variable) {
+  if (variable === 'rainfall_mm') return 'linear-gradient(to right, #1a2a45, #3b82f6)';
+  if (variable === 'sunshine_hours') return 'linear-gradient(to right, #1a1d27, #f5c842)';
+  return 'linear-gradient(to right, #1e3a8a, #06b6d4, #f5c842, #ef4444)';
+}
+
+function freshCanvas(chart, canvasId) {
+  if (chart) chart.destroy();
+  const old = document.getElementById(canvasId);
+  const c = old.cloneNode(false);
+  old.parentNode.replaceChild(c, old);
+  return c;
+}
+
+let chartAvg = null, chartAnnual = null;
 
 document.getElementById('btn-load').addEventListener('click', async () => {
   const sid = selStation.value;
   const variable = document.getElementById('sel-var').value;
-  const singleYear = parseInt(document.getElementById('year').value);
-  const yStart = parseInt(document.getElementById('year-start').value) || null;
-  const yEnd = parseInt(document.getElementById('year-end').value) || null;
-  const wrap = document.getElementById('heatmap-wrap');
+  const yStart = parseInt(document.getElementById('year-start').value);
+  const yEnd   = parseInt(document.getElementById('year-end').value);
   const msg = document.getElementById('msg');
   msg.innerHTML = '<p class="loading">Loading…</p>';
-  wrap.innerHTML = '';
 
-  const varLabels = { mean_temp_c:'Mean Temp (°C)', max_temp_c:'Max Temp (°C)', min_temp_c:'Min Temp (°C)', rainfall_mm:'Rainfall (mm)', sunshine_hours:'Sunshine (h)' };
+  const varLabels = { mean_temp_c:'Mean Temp', max_temp_c:'Max Temp', min_temp_c:'Min Temp', rainfall_mm:'Rainfall', sunshine_hours:'Sunshine' };
   const unit = { mean_temp_c:'°C', max_temp_c:'°C', min_temp_c:'°C', rainfall_mm:'mm', sunshine_hours:'h' }[variable];
+  const years = Array.from({ length: yEnd - yStart + 1 }, (_, i) => yStart + i);
 
   try {
-    const years = yStart && yEnd
-      ? Array.from({length: yEnd - yStart + 1}, (_, i) => yStart + i)
-      : [singleYear];
+    // Fetch all years in parallel (batch of up to 150 requests)
+    const results = await Promise.all(years.map(y => getHeatmap(sid, variable, y).catch(() => null)));
+    msg.innerHTML = '';
 
-    const results = await Promise.all(years.map(y => getHeatmap(sid, variable, y).catch(()=>null)));
+    // Build data matrix: data[year][month] = value
+    const matrix = {};
+    results.forEach((res, i) => {
+      const year = years[i];
+      matrix[year] = {};
+      (res?.cells || []).forEach(c => {
+        const month = parseInt(c.date.slice(5, 7));
+        matrix[year][month] = c.value;
+      });
+    });
 
-    // Collect all values for global scale
-    const allVals = results.flatMap(r => (r?.cells || []).map(c=>c.value)).filter(v=>v!=null);
+    // Global min/max for colour scale
+    const allVals = Object.values(matrix).flatMap(m => Object.values(m)).filter(v => v != null);
+    if (!allVals.length) {
+      msg.innerHTML = '<p class="loading">No data found for this selection.</p>';
+      return;
+    }
     const globalMin = Math.min(...allVals);
     const globalMax = Math.max(...allVals);
 
-    msg.innerHTML = '';
+    // ── Build the heatmap table ─────────────────────────────────────────────
+    document.getElementById('heatmap-card').style.display = 'block';
+    document.getElementById('hm-title').textContent = `${varLabels[variable]} (${unit}) — ${sid} — ${yStart}–${yEnd}`;
 
-    results.forEach((res, idx) => {
-      if (!res) return;
-      const year = years[idx];
-      const cells = res.cells || [];
-      // cells have a `date` field like "2020-01-15" — extract month number
-      const byMonth = Object.fromEntries(cells.map(c => [parseInt(c.date.slice(5,7)), c]));
+    // Stats
+    const mean = allVals.reduce((a, b) => a + b, 0) / allVals.length;
+    document.getElementById('hm-stats').innerHTML = `
+      <span class="hm-stat">Min: <strong>${globalMin.toFixed(1)}${unit}</strong></span>
+      <span class="hm-stat">Max: <strong>${globalMax.toFixed(1)}${unit}</strong></span>
+      <span class="hm-stat">Mean: <strong>${mean.toFixed(1)}${unit}</strong></span>
+      <span class="hm-stat">Years: <strong>${years.length}</strong></span>
+    `;
 
-      const section = document.createElement('div');
-      section.className = 'card';
-      section.innerHTML = `<div class="card-title">${year} — ${varLabels[variable]}</div>`;
+    // Table header: months
+    const table = document.getElementById('hm-table');
+    table.innerHTML = '';
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    // Year label column
+    const thEmpty = document.createElement('th');
+    thEmpty.textContent = '';
+    headerRow.appendChild(thEmpty);
+    MONTH_NAMES.forEach(m => {
+      const th = document.createElement('th');
+      th.textContent = m.slice(0, 3);
+      headerRow.appendChild(th);
+    });
+    // Annual avg column
+    const thAnn = document.createElement('th');
+    thAnn.textContent = 'Avg';
+    thAnn.style.color = 'var(--accent)';
+    headerRow.appendChild(thAnn);
 
-      const grid = document.createElement('div');
-      grid.className = 'heatmap-container';
+    // Table rows: one per year
+    const tbody = table.createTBody();
+    // Show newest year first
+    [...years].reverse().forEach(year => {
+      const row = tbody.insertRow();
+      const tdYear = row.insertCell();
+      tdYear.className = 'year-label';
+      tdYear.textContent = year;
 
-      MONTH_NAMES.forEach((mName, i) => {
-        const col = document.createElement('div');
-        col.className = 'hm-col';
-
-        const cell = byMonth[i + 1];
-        const sq = document.createElement('div');
-        sq.className = 'hm-cell-sq';
-        sq.style.background = valueToColor(cell?.value, globalMin, globalMax, variable);
-        sq.setAttribute('data-tip', cell ? `${mName} ${year}: ${cell.value?.toFixed(1)}${unit}` : `${mName}: no data`);
-
-        const lbl = document.createElement('div');
-        lbl.className = 'month-label';
-        lbl.textContent = mName;
-
-        col.appendChild(sq);
-        col.appendChild(lbl);
-        grid.appendChild(col);
-      });
-
-      section.appendChild(grid);
-
-      // Legend
-      if (allVals.length) {
-        const legend = document.createElement('div');
-        legend.className = 'hm-legend';
-        legend.innerHTML = `<span>${globalMin.toFixed(1)}${unit}</span><div class="hm-legend-bar"></div><span>${globalMax.toFixed(1)}${unit}</span>`;
-        section.appendChild(legend);
+      const yearVals = [];
+      for (let m = 1; m <= 12; m++) {
+        const td = row.insertCell();
+        const val = matrix[year]?.[m];
+        if (val != null) {
+          td.className = 'hm-cell';
+          td.style.background = valueToColor(val, globalMin, globalMax, variable);
+          td.setAttribute('data-tip', `${MONTH_NAMES[m-1]} ${year}: ${val.toFixed(1)}${unit}`);
+          yearVals.push(val);
+        } else {
+          td.className = 'hm-cell empty';
+          td.setAttribute('data-tip', `${MONTH_NAMES[m-1]} ${year}: no data`);
+        }
       }
 
-      wrap.appendChild(section);
+      // Annual average cell
+      const tdAvg = row.insertCell();
+      if (yearVals.length) {
+        const avg = yearVals.reduce((a, b) => a + b, 0) / yearVals.length;
+        tdAvg.className = 'hm-cell';
+        tdAvg.style.background = valueToColor(avg, globalMin, globalMax, variable);
+        tdAvg.style.opacity = '0.85';
+        tdAvg.style.fontWeight = '600';
+        tdAvg.style.fontSize = '0.68rem';
+        tdAvg.style.color = '#fff';
+        tdAvg.textContent = avg.toFixed(1);
+        tdAvg.setAttribute('data-tip', `${year} annual avg: ${avg.toFixed(1)}${unit}`);
+      } else {
+        tdAvg.className = 'hm-cell empty';
+      }
+    });
+
+    // Legend
+    const legend = document.getElementById('hm-legend');
+    legend.innerHTML = `
+      <span style="white-space:nowrap">${globalMin.toFixed(1)}${unit}</span>
+      <div class="hm-legend-bar" style="background:${legendGradient(variable)}"></div>
+      <span style="white-space:nowrap">${globalMax.toFixed(1)}${unit}</span>
+      <span style="margin-left:8px;color:var(--muted);font-size:0.7rem">Hover cells for exact values</span>
+    `;
+
+    // ── Monthly averages line chart (average per month across all years) ────
+    const monthlyAvgs = Array.from({length: 12}, (_, i) => {
+      const vals = years.map(y => matrix[y]?.[i+1]).filter(v => v != null);
+      return vals.length ? (vals.reduce((a,b) => a+b, 0) / vals.length) : null;
+    });
+
+    document.getElementById('avg-card').style.display = 'block';
+    document.getElementById('avg-title').textContent = `Long-term Monthly Averages — ${varLabels[variable]} (${yStart}–${yEnd})`;
+    chartAvg = new Chart(freshCanvas(chartAvg, 'chart-avg'), {
+      type: 'bar',
+      data: {
+        labels: MONTH_NAMES,
+        datasets: [{
+          label: `Avg ${varLabels[variable]}`,
+          data: monthlyAvgs,
+          backgroundColor: monthlyAvgs.map(v => valueToColor(v, globalMin, globalMax, variable) ?? '#22263a'),
+          borderColor: 'transparent',
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { grid: { color: '#2e3251' }, ticks: { color: '#8b92b4' } },
+          y: { title: { display: true, text: `${varLabels[variable]} (${unit})`, color: '#8b92b4' }, grid: { color: '#2e3251' }, ticks: { color: '#8b92b4' } },
+        },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw?.toFixed(1)}${unit}` } } },
+      },
+    });
+
+    // ── Annual average line chart ────────────────────────────────────────────
+    const annualAvgs = years.map(y => {
+      const vals = Object.values(matrix[y] || {}).filter(v => v != null);
+      return vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+    });
+
+    document.getElementById('annual-card').style.display = 'block';
+    document.getElementById('annual-title').textContent = `Annual Average — ${varLabels[variable]} — ${sid}`;
+    chartAnnual = new Chart(freshCanvas(chartAnnual, 'chart-annual'), {
+      type: 'line',
+      data: {
+        labels: years,
+        datasets: [{
+          label: `Annual avg ${varLabels[variable]}`,
+          data: annualAvgs,
+          borderColor: '#4f8ef7',
+          backgroundColor: 'rgba(79,142,247,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: years.length > 80 ? 0 : 3,
+          spanGaps: true,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { grid: { color: '#2e3251' }, ticks: { color: '#8b92b4', maxTicksLimit: 15 } },
+          y: { title: { display: true, text: `${varLabels[variable]} (${unit})`, color: '#8b92b4' }, grid: { color: '#2e3251' }, ticks: { color: '#8b92b4' } },
+        },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw?.toFixed(2)}${unit}` } } },
+      },
     });
 
   } catch(e) {

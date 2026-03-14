@@ -123,6 +123,14 @@ items.forEach(s => {
   checksEl.appendChild(lbl);
 });
 
+function freshCanvas(chart, canvasId) {
+  if (chart) { chart.destroy(); }
+  const old = document.getElementById(canvasId);
+  const canvas = old.cloneNode(false);
+  old.parentNode.replaceChild(canvas, old);
+  return canvas;
+}
+
 let chartAvg = null, chartRange = null, chartRadar = null;
 
 document.getElementById('btn-compare').addEventListener('click', async () => {
@@ -146,8 +154,7 @@ document.getElementById('btn-compare').addEventListener('click', async () => {
     // ── Average bar chart ────────────────────────────────────────────────────
     document.getElementById('avg-card').style.display = 'block';
     document.getElementById('avg-title').textContent = `Average ${varLabels[variable]} by Station`;
-    if (chartAvg) chartAvg.destroy();
-    chartAvg = new Chart(document.getElementById('chart-avg'), {
+    chartAvg = new Chart(freshCanvas(chartAvg, 'chart-avg'), {
       type: 'bar',
       data: {
         labels: stLabels,
@@ -173,8 +180,7 @@ document.getElementById('btn-compare').addEventListener('click', async () => {
     // ── Min/Mean/Max grouped bar chart ───────────────────────────────────────
     document.getElementById('range-card').style.display = 'block';
     document.getElementById('range-title').textContent = `Min / Mean / Max ${varLabels[variable]}`;
-    if (chartRange) chartRange.destroy();
-    chartRange = new Chart(document.getElementById('chart-range'), {
+    chartRange = new Chart(freshCanvas(chartRange, 'chart-range'), {
       type: 'bar',
       data: {
         labels: stLabels,
@@ -219,8 +225,7 @@ document.getElementById('btn-compare').addEventListener('click', async () => {
     if (radarDatasets.length) {
       document.getElementById('radar-card').style.display = 'block';
       document.getElementById('radar-title').textContent = `Monthly ${varLabels[variable]} Profile`;
-      if (chartRadar) chartRadar.destroy();
-      chartRadar = new Chart(document.getElementById('chart-radar'), {
+      chartRadar = new Chart(freshCanvas(chartRadar, 'chart-radar'), {
         type: 'radar',
         data: { labels: MONTH_NAMES, datasets: radarDatasets },
         options: {

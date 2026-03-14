@@ -99,16 +99,17 @@ async def root():
 
 # ── Frontend dashboard (static files) ────────────────────────────────────────
 _STATIC_DIR = Path(__file__).parent.parent / "static"
-if _STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
-    @app.get("/ui", include_in_schema=False)
-    async def dashboard_home():
-        return FileResponse(str(_STATIC_DIR / "index.html"))
 
-    @app.get("/ui/{page}", include_in_schema=False)
-    async def dashboard_page(page: str):
-        html_file = _STATIC_DIR / f"{page}.html"
-        if html_file.exists():
-            return FileResponse(str(html_file))
-        return FileResponse(str(_STATIC_DIR / "index.html"))
+@app.get("/ui", include_in_schema=False)
+async def dashboard_home():
+    return FileResponse(str(_STATIC_DIR / "index.html"))
+
+
+@app.get("/ui/{page}", include_in_schema=False)
+async def dashboard_page(page: str):
+    html_file = _STATIC_DIR / f"{page}.html"
+    if html_file.exists():
+        return FileResponse(str(html_file))
+    return FileResponse(str(_STATIC_DIR / "index.html"))

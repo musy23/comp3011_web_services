@@ -11,7 +11,7 @@ class ObservationBase(BaseModel):
     mean_temp_c: float | None = Field(None, ge=-50, le=60, examples=[16.9])
     rainfall_mm: float | None = Field(None, ge=0, le=1000, examples=[3.2])
     snow_depth_cm: int | None = Field(None, ge=0, le=500, examples=[None])
-    sunshine_hours: float | None = Field(None, ge=0, le=24, examples=[8.5])
+    sunshine_hours: float | None = Field(None, ge=0, le=750, examples=[8.5])
     wind_speed_kmh: float | None = Field(None, ge=0, le=500, examples=[15.0])
     data_quality: int = Field(
         default=1,
@@ -43,7 +43,7 @@ class ObservationPatch(BaseModel):
     mean_temp_c: float | None = Field(None, ge=-50, le=60)
     rainfall_mm: float | None = Field(None, ge=0, le=1000)
     snow_depth_cm: int | None = Field(None, ge=0, le=500)
-    sunshine_hours: float | None = Field(None, ge=0, le=24)
+    sunshine_hours: float | None = Field(None, ge=0, le=750)
     wind_speed_kmh: float | None = Field(None, ge=0, le=500)
     data_quality: int | None = Field(None, ge=1, le=3, description="Data quality flag: 1=good, 2=estimated, 3=suspect")
 

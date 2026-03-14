@@ -119,6 +119,14 @@ const sigmaRange = document.getElementById('sigma');
 const sigmaDisplay = document.getElementById('sigma-display');
 sigmaRange.addEventListener('input', () => { sigmaDisplay.textContent = sigmaRange.value; });
 
+function freshCanvas(chart, canvasId) {
+  if (chart) { chart.destroy(); }
+  const old = document.getElementById(canvasId);
+  const canvas = old.cloneNode(false);
+  old.parentNode.replaceChild(canvas, old);
+  return canvas;
+}
+
 let chartAnom = null, chartScatter = null;
 
 document.getElementById('btn-detect').addEventListener('click', async () => {
@@ -161,8 +169,7 @@ document.getElementById('btn-detect').addEventListener('click', async () => {
     const barColors = sigmaVals.map(v => parseFloat(v) > 0 ? '#f05858bb' : '#64b5f6bb');
     const borderColors = sigmaVals.map(v => parseFloat(v) > 0 ? '#f05858' : '#64b5f6');
 
-    if (chartAnom) chartAnom.destroy();
-    chartAnom = new Chart(document.getElementById('chart-anom'), {
+    chartAnom = new Chart(freshCanvas(chartAnom, 'chart-anom'), {
       type: 'bar',
       data: {
         labels,
@@ -191,8 +198,7 @@ document.getElementById('btn-detect').addEventListener('click', async () => {
     document.getElementById('scatter-title').textContent = `Anomaly Values vs Monthly Mean — ${sid}`;
     const scatterPoints = anomList.map(a => ({ x: a.monthly_mean, y: a.value, date: a.date, sigma: a.deviation_sigma?.toFixed(2) }));
 
-    if (chartScatter) chartScatter.destroy();
-    chartScatter = new Chart(document.getElementById('chart-scatter'), {
+    chartScatter = new Chart(freshCanvas(chartScatter, 'chart-scatter'), {
       type: 'scatter',
       data: {
         datasets: [{
