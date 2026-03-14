@@ -9,7 +9,7 @@ Uses PostgreSQL-native aggregate functions for efficiency:
   - window functions                        → rolling calculations
 """
 
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,7 +68,11 @@ class AnalyticsRepository:
         """
         Linear regression using PostgreSQL regr_slope/regr_r2.
         Epoch seconds used as the X axis so slope is per-second; scaled to per-decade.
+        Excludes the current calendar year to avoid partial-year skew.
         """
+        last_complete_year = datetime.now().year - 1
+        if date_to.year >= datetime.now().year:
+            date_to = date(last_complete_year, 12, 31)
         sql = text(f"""
             SELECT
                 regr_slope({column}, EXTRACT(EPOCH FROM date))    AS slope_per_sec,
@@ -157,7 +161,10 @@ class AnalyticsRepository:
         year_from: int,
         year_to: int,
     ) -> list[dict]:
-        """Monthly climate statistics over a given year range."""
+        """Monthly climate statistics over a given year range.
+        Excludes the current calendar year to avoid partial-year skew."""
+        last_complete_year = datetime.now().year - 1
+        year_to = min(year_to, last_complete_year)
         sql = text(f"""
             SELECT
                 EXTRACT(MONTH FROM date)::int  AS month,
@@ -196,7 +203,12 @@ class AnalyticsRepository:
         date_from: date,
         date_to: date,
     ) -> list[dict]:
-        """Aggregate statistics for multiple stations over a date range."""
+        """Aggregate statistics for multiple stations over a date range.
+        Excludes the current calendar year to avoid partial-year skew."""
+        last_complete_year = datetime.now().year - 1
+        max_date = date(last_complete_year, 12, 31)
+        if date_to.year >= datetime.now().year:
+            date_to = max_date
         sql = text(f"""
             SELECT
                 s.station_id,

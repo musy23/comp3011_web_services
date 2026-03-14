@@ -3,99 +3,55 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Heatmap · UK Climate Insights</title>
+  <title>Climate Map · UK Climate Insights</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
-    /* ── Grid layout: years × months ───────────────────────────── */
-    .hm-table-wrap { overflow-x: auto; }
-    .hm-table {
-      border-collapse: separate;
-      border-spacing: 3px;
-      font-size: 0.72rem;
-      min-width: 640px;
-    }
-    .hm-table th {
-      background: transparent;
-      color: var(--muted);
-      font-weight: 600;
-      text-align: center;
-      padding: 4px 6px;
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      border: none;
-    }
-    .hm-table td.year-label {
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 0.72rem;
-      text-align: right;
-      padding-right: 10px;
-      white-space: nowrap;
-      border: none;
-      background: transparent;
-    }
-    .hm-cell {
-      width: 46px;
-      height: 28px;
-      border-radius: 4px;
-      text-align: center;
-      vertical-align: middle;
-      cursor: default;
-      position: relative;
-      transition: transform 0.1s, box-shadow 0.1s;
-      border: none;
-    }
-    .hm-cell:hover {
-      transform: scale(1.18);
-      z-index: 5;
-      box-shadow: 0 0 0 2px #fff3;
-    }
-    .hm-cell::after {
-      content: attr(data-tip);
-      position: absolute;
-      bottom: 130%;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 4px 10px;
-      font-size: 0.73rem;
-      white-space: nowrap;
-      z-index: 20;
-      pointer-events: none;
-      display: none;
-    }
-    .hm-cell:hover::after { display: block; }
-    .hm-cell.empty { background: #1e2235 !important; }
+    #map { height: 520px; border-radius: 10px; border: 1px solid var(--border); }
 
-    /* ── Legend ─────────────────────────────────────────────────── */
-    .hm-legend {
+    .leaflet-popup-content-wrapper {
+      background: #1a1e35;
+      color: #c9d1f0;
+      border: 1px solid #2e3251;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .leaflet-popup-tip { background: #1a1e35; }
+    .leaflet-popup-content { margin: 12px 16px; font-size: 0.87rem; line-height: 1.6; }
+    .popup-station { font-weight: 700; font-size: 1rem; color: #c9d1f0; margin-bottom: 6px; }
+    .popup-value { font-size: 1.4rem; font-weight: 700; margin: 4px 0; }
+    .popup-meta { color: #8b92b4; font-size: 0.8rem; }
+    .popup-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 8px; font-size: 0.8rem; color: #8b92b4; }
+    .popup-stats span { color: #c9d1f0; }
+
+    .legend {
+      background: #1a1e35;
+      border: 1px solid #2e3251;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      color: #8b92b4;
+      line-height: 1.5;
+    }
+    .legend-title { font-weight: 600; color: #c9d1f0; margin-bottom: 6px; }
+    .legend-bar { height: 12px; border-radius: 4px; margin: 4px 0; }
+    .legend-labels { display: flex; justify-content: space-between; color: #8b92b4; }
+
+    .station-marker {
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.8);
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-top: 14px;
+      justify-content: center;
+      font-weight: 700;
       font-size: 0.75rem;
-      color: var(--muted);
-    }
-    .hm-legend-bar {
-      flex: 1;
-      max-width: 280px;
-      height: 10px;
-      border-radius: 4px;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
 
-    /* ── Stats bar ──────────────────────────────────────────────── */
-    .hm-stats {
-      display: flex;
-      gap: 20px;
-      flex-wrap: wrap;
-      margin-bottom: 16px;
-      font-size: 0.82rem;
-    }
-    .hm-stat { color: var(--muted); }
-    .hm-stat strong { color: var(--text); }
+    #bar-card { display: none; }
   </style>
 </head>
 <body>
@@ -111,22 +67,18 @@
     <a href="/ui/trends"><span class="icon">📈</span> Trends</a>
     <a href="/ui/compare"><span class="icon">⚖</span> Compare</a>
     <a href="/ui/anomalies"><span class="icon">🔍</span> Anomalies</a>
-    <a href="/ui/heatmap" class="active"><span class="icon">🟦</span> Heatmap</a>
+    <a href="/ui/heatmap" class="active"><span class="icon">🗺</span> Climate Map</a>
   </nav>
   <div class="api-link"><a href="/docs" target="_blank">📄 API Docs</a></div>
 </aside>
 
 <main id="main">
   <div class="page-header">
-    <h1>Climate Heatmap</h1>
-    <p>Year × month grid — colour intensity shows the variable value, revealing seasonal patterns and long-term trends at a glance</p>
+    <h1>Climate Map</h1>
+    <p>Geographic view of climate variables across UK weather stations — markers sized and coloured by value</p>
   </div>
 
   <div class="controls">
-    <div>
-      <label>Station</label>
-      <select id="sel-station"></select>
-    </div>
     <div>
       <label>Variable</label>
       <select id="sel-var">
@@ -138,290 +90,271 @@
       </select>
     </div>
     <div>
-      <label>Year From</label>
-      <input type="number" id="year-start" value="1980" min="1800" max="2026" style="width:85px">
+      <label>Month</label>
+      <select id="sel-month">
+        <option value="0">Annual Average</option>
+        <option value="1">January</option>
+        <option value="2">February</option>
+        <option value="3">March</option>
+        <option value="4">April</option>
+        <option value="5">May</option>
+        <option value="6">June</option>
+        <option value="7">July</option>
+        <option value="8">August</option>
+        <option value="9">September</option>
+        <option value="10">October</option>
+        <option value="11">November</option>
+        <option value="12">December</option>
+      </select>
     </div>
     <div>
-      <label>Year To</label>
-      <input type="number" id="year-end" value="2026" min="1800" max="2026" style="width:85px">
+      <label>From year</label>
+      <input type="number" id="year-from" value="1991" min="1853" max="2025" style="width:80px">
     </div>
-    <button id="btn-load">Show Heatmap</button>
+    <div>
+      <label>To year</label>
+      <input type="number" id="year-to" value="2020" min="1853" max="2025" style="width:80px">
+    </div>
+    <button id="btn-load">Update Map</button>
   </div>
 
-  <!-- Main heatmap grid -->
-  <div class="card" id="heatmap-card" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div class="card-title" id="hm-title" style="margin-bottom:0">Heatmap</div>
-      <div class="hm-stats" id="hm-stats"></div>
-    </div>
-    <div class="hm-table-wrap">
-      <table class="hm-table" id="hm-table"></table>
-    </div>
-    <div class="hm-legend" id="hm-legend"></div>
+  <!-- Map -->
+  <div class="card">
+    <div class="card-title" id="map-title">Mean Temperature — Annual Average (1991–2020)</div>
+    <div id="map"></div>
   </div>
 
-  <!-- Monthly average line chart -->
-  <div class="card" id="avg-card" style="display:none">
-    <div class="card-title" id="avg-title">Long-term Monthly Averages</div>
+  <!-- Bar chart comparison -->
+  <div class="card" id="bar-card">
+    <div class="card-title" id="bar-title">Station Comparison</div>
     <div class="chart-wrap">
-      <canvas id="chart-avg"></canvas>
-    </div>
-  </div>
-
-  <!-- Annual average line chart -->
-  <div class="card" id="annual-card" style="display:none">
-    <div class="card-title" id="annual-title">Annual Average Over Time</div>
-    <div class="chart-wrap">
-      <canvas id="chart-annual"></canvas>
+      <canvas id="chart-bar"></canvas>
     </div>
   </div>
 
   <div id="msg"></div>
 </main>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script type="module">
-import { getStations, getHeatmap, applyDarkTheme, MONTH_NAMES, setError, populateStationSelect } from '/static/js/api.js';
+import { getStations, getSeasonal, applyDarkTheme, setError } from '/static/js/api.js';
 
 applyDarkTheme();
 
-const items = await getStations().catch(() => []);
-const selStation = document.getElementById('sel-station');
-populateStationSelect(selStation, items);
-const ox = [...selStation.options].find(o => o.value === 'OXFORD');
-if (ox) ox.selected = true;
+const MONTH_NAMES = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const VAR_LABELS = {
+  mean_temp_c: 'Mean Temp', max_temp_c: 'Max Temp', min_temp_c: 'Min Temp',
+  rainfall_mm: 'Rainfall', sunshine_hours: 'Sunshine Hours',
+};
+const VAR_UNITS = {
+  mean_temp_c: '°C', max_temp_c: '°C', min_temp_c: '°C',
+  rainfall_mm: 'mm', sunshine_hours: 'h',
+};
 
-// ── Color helpers ────────────────────────────────────────────────────────────
-function lerp(a, b, t) { return a + (b - a) * t; }
-function lerpHex(c1, c2, t) {
-  const h = s => parseInt(s, 16);
-  const r = Math.round(lerp(h(c1.slice(1,3)), h(c2.slice(1,3)), t));
-  const g = Math.round(lerp(h(c1.slice(3,5)), h(c2.slice(3,5)), t));
-  const b = Math.round(lerp(h(c1.slice(5,7)), h(c2.slice(5,7)), t));
-  return `rgb(${r},${g},${b})`;
+// Colour scales per variable (min, max, colour stops)
+const SCALES = {
+  mean_temp_c:    { min: 4,  max: 14,  colors: ['#4575b4','#74add1','#fee090','#f46d43','#d73027'] },
+  max_temp_c:     { min: 6,  max: 18,  colors: ['#4575b4','#74add1','#fee090','#f46d43','#d73027'] },
+  min_temp_c:     { min: 1,  max: 10,  colors: ['#4575b4','#74add1','#fee090','#f46d43','#d73027'] },
+  rainfall_mm:    { min: 20, max: 120, colors: ['#ffffd9','#c7e9b4','#41b6c4','#2c7fb8','#253494'] },
+  sunshine_hours: { min: 50, max: 180, colors: ['#feedde','#fdbe85','#fd8d3c','#e6550d','#a63603'] },
+};
+
+function hexToRgb(hex) {
+  const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return r ? { r: parseInt(r[1],16), g: parseInt(r[2],16), b: parseInt(r[3],16) } : {r:128,g:128,b:128};
 }
 
-function valueToColor(val, min, max, variable) {
-  if (val == null) return null; // null = empty cell
-  const t = max === min ? 0.5 : Math.max(0, Math.min(1, (val - min) / (max - min)));
-  if (variable === 'rainfall_mm') {
-    return lerpHex('#1a2a45', '#3b82f6', t);
-  }
-  if (variable === 'sunshine_hours') {
-    return lerpHex('#1a1d27', '#f5c842', t);
-  }
-  // Temperature: cold blue → teal → yellow → hot red
-  if (t < 0.33) return lerpHex('#1e3a8a', '#06b6d4', t * 3);
-  if (t < 0.66) return lerpHex('#06b6d4', '#f5c842', (t - 0.33) * 3);
-  return lerpHex('#f5c842', '#ef4444', (t - 0.66) * 3);
+function interpolateColor(colors, t) {
+  t = Math.max(0, Math.min(1, t));
+  const n = colors.length - 1;
+  const idx = Math.floor(t * n);
+  const frac = t * n - idx;
+  if (idx >= n) return colors[n];
+  const c1 = hexToRgb(colors[idx]);
+  const c2 = hexToRgb(colors[idx + 1]);
+  return `rgb(${Math.round(c1.r+(c2.r-c1.r)*frac)},${Math.round(c1.g+(c2.g-c1.g)*frac)},${Math.round(c1.b+(c2.b-c1.b)*frac)})`;
 }
 
-function legendGradient(variable) {
-  if (variable === 'rainfall_mm') return 'linear-gradient(to right, #1a2a45, #3b82f6)';
-  if (variable === 'sunshine_hours') return 'linear-gradient(to right, #1a1d27, #f5c842)';
-  return 'linear-gradient(to right, #1e3a8a, #06b6d4, #f5c842, #ef4444)';
+function valueToColor(value, variable) {
+  const s = SCALES[variable];
+  return interpolateColor(s.colors, (value - s.min) / (s.max - s.min));
 }
 
-function freshCanvas(chart, canvasId) {
-  if (chart) chart.destroy();
-  const old = document.getElementById(canvasId);
-  const c = old.cloneNode(false);
-  old.parentNode.replaceChild(c, old);
-  return c;
+function valueToRadius(value, variable) {
+  const s = SCALES[variable];
+  const t = Math.max(0, Math.min(1, (value - s.min) / (s.max - s.min)));
+  return Math.round(22 + t * 26);
 }
 
-let chartAvg = null, chartAnnual = null;
+// Init Leaflet map centred on UK
+const map = L.map('map', { center: [54.5, -3], zoom: 6 });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  maxZoom: 19,
+}).addTo(map);
 
-document.getElementById('btn-load').addEventListener('click', async () => {
-  const sid = selStation.value;
+// Legend control
+const legendControl = L.control({ position: 'bottomright' });
+legendControl.onAdd = () => {
+  const div = L.DomUtil.create('div', 'legend');
+  div.id = 'map-legend';
+  return div;
+};
+legendControl.addTo(map);
+
+function updateLegend(variable, yearFrom, yearTo, month) {
+  const s = SCALES[variable];
+  const unit = VAR_UNITS[variable];
+  const period = month === 0
+    ? `Annual avg ${yearFrom}–${yearTo}`
+    : `${MONTH_NAMES[month]} avg ${yearFrom}–${yearTo}`;
+  document.getElementById('map-legend').innerHTML = `
+    <div class="legend-title">${VAR_LABELS[variable]} (${unit})</div>
+    <div style="font-size:0.75rem;color:#8b92b4;margin-bottom:4px">${period}</div>
+    <div class="legend-bar" style="background:linear-gradient(to right,${s.colors.join(',')})"></div>
+    <div class="legend-labels"><span>${s.min}${unit}</span><span>${s.max}${unit}</span></div>
+    <div style="margin-top:8px;font-size:0.75rem;color:#8b92b4">Circle size also reflects value</div>
+  `;
+}
+
+let markers = [];
+let barChart = null;
+
+function clearMarkers() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+}
+
+async function loadMap() {
   const variable = document.getElementById('sel-var').value;
-  const yStart = parseInt(document.getElementById('year-start').value);
-  const yEnd   = parseInt(document.getElementById('year-end').value);
+  const month = parseInt(document.getElementById('sel-month').value);
+  const yearFrom = parseInt(document.getElementById('year-from').value);
+  const yearTo = parseInt(document.getElementById('year-to').value);
+  const unit = VAR_UNITS[variable];
+  const varLabel = VAR_LABELS[variable];
   const msg = document.getElementById('msg');
-  msg.innerHTML = '<p class="loading">Loading…</p>';
 
-  const varLabels = { mean_temp_c:'Mean Temp', max_temp_c:'Max Temp', min_temp_c:'Min Temp', rainfall_mm:'Rainfall', sunshine_hours:'Sunshine' };
-  const unit = { mean_temp_c:'°C', max_temp_c:'°C', min_temp_c:'°C', rainfall_mm:'mm', sunshine_hours:'h' }[variable];
-  const years = Array.from({ length: yEnd - yStart + 1 }, (_, i) => yStart + i);
+  const periodLabel = month === 0
+    ? `Annual Average (${yearFrom}–${yearTo})`
+    : `${MONTH_NAMES[month]} Average (${yearFrom}–${yearTo})`;
+
+  document.getElementById('map-title').textContent = `${varLabel} — ${periodLabel}`;
+  msg.innerHTML = '<p class="loading">Loading station data…</p>';
+  clearMarkers();
 
   try {
-    // Fetch all years in parallel (batch of up to 150 requests)
-    const results = await Promise.all(years.map(y => getHeatmap(sid, variable, y).catch(() => null)));
-    msg.innerHTML = '';
+    const stations = await getStations();
+    const seasonalResults = await Promise.all(
+      stations.map(s => getSeasonal(s.station_id, variable, yearFrom, yearTo).catch(() => null))
+    );
 
-    // Build data matrix: data[year][month] = value
-    const matrix = {};
-    results.forEach((res, i) => {
-      const year = years[i];
-      matrix[year] = {};
-      (res?.cells || []).forEach(c => {
-        const month = parseInt(c.date.slice(5, 7));
-        matrix[year][month] = c.value;
-      });
-    });
+    const stationValues = [];
 
-    // Global min/max for colour scale
-    const allVals = Object.values(matrix).flatMap(m => Object.values(m)).filter(v => v != null);
-    if (!allVals.length) {
-      msg.innerHTML = '<p class="loading">No data found for this selection.</p>';
-      return;
-    }
-    const globalMin = Math.min(...allVals);
-    const globalMax = Math.max(...allVals);
+    stations.forEach((station, i) => {
+      const sd = seasonalResults[i];
+      if (!sd || !station.latitude || !station.longitude) return;
 
-    // ── Build the heatmap table ─────────────────────────────────────────────
-    document.getElementById('heatmap-card').style.display = 'block';
-    document.getElementById('hm-title').textContent = `${varLabels[variable]} (${unit}) — ${sid} — ${yStart}–${yEnd}`;
-
-    // Stats
-    const mean = allVals.reduce((a, b) => a + b, 0) / allVals.length;
-    document.getElementById('hm-stats').innerHTML = `
-      <span class="hm-stat">Min: <strong>${globalMin.toFixed(1)}${unit}</strong></span>
-      <span class="hm-stat">Max: <strong>${globalMax.toFixed(1)}${unit}</strong></span>
-      <span class="hm-stat">Mean: <strong>${mean.toFixed(1)}${unit}</strong></span>
-      <span class="hm-stat">Years: <strong>${years.length}</strong></span>
-    `;
-
-    // Table header: months
-    const table = document.getElementById('hm-table');
-    table.innerHTML = '';
-    const thead = table.createTHead();
-    const headerRow = thead.insertRow();
-    // Year label column
-    const thEmpty = document.createElement('th');
-    thEmpty.textContent = '';
-    headerRow.appendChild(thEmpty);
-    MONTH_NAMES.forEach(m => {
-      const th = document.createElement('th');
-      th.textContent = m.slice(0, 3);
-      headerRow.appendChild(th);
-    });
-    // Annual avg column
-    const thAnn = document.createElement('th');
-    thAnn.textContent = 'Avg';
-    thAnn.style.color = 'var(--accent)';
-    headerRow.appendChild(thAnn);
-
-    // Table rows: one per year
-    const tbody = table.createTBody();
-    // Show newest year first
-    [...years].reverse().forEach(year => {
-      const row = tbody.insertRow();
-      const tdYear = row.insertCell();
-      tdYear.className = 'year-label';
-      tdYear.textContent = year;
-
-      const yearVals = [];
-      for (let m = 1; m <= 12; m++) {
-        const td = row.insertCell();
-        const val = matrix[year]?.[m];
-        if (val != null) {
-          td.className = 'hm-cell';
-          td.style.background = valueToColor(val, globalMin, globalMax, variable);
-          td.setAttribute('data-tip', `${MONTH_NAMES[m-1]} ${year}: ${val.toFixed(1)}${unit}`);
-          yearVals.push(val);
-        } else {
-          td.className = 'hm-cell empty';
-          td.setAttribute('data-tip', `${MONTH_NAMES[m-1]} ${year}: no data`);
-        }
-      }
-
-      // Annual average cell
-      const tdAvg = row.insertCell();
-      if (yearVals.length) {
-        const avg = yearVals.reduce((a, b) => a + b, 0) / yearVals.length;
-        tdAvg.className = 'hm-cell';
-        tdAvg.style.background = valueToColor(avg, globalMin, globalMax, variable);
-        tdAvg.style.opacity = '0.85';
-        tdAvg.style.fontWeight = '600';
-        tdAvg.style.fontSize = '0.68rem';
-        tdAvg.style.color = '#fff';
-        tdAvg.textContent = avg.toFixed(1);
-        tdAvg.setAttribute('data-tip', `${year} annual avg: ${avg.toFixed(1)}${unit}`);
+      let value;
+      if (month === 0) {
+        const means = sd.monthly_stats.map(m => m.mean).filter(v => v != null);
+        value = means.length ? means.reduce((a,b) => a+b, 0) / means.length : null;
       } else {
-        tdAvg.className = 'hm-cell empty';
+        const monthData = sd.monthly_stats.find(m => m.month === month);
+        value = monthData?.mean ?? null;
       }
+      if (value == null) return;
+
+      stationValues.push({ station, value, sd });
+
+      const color = valueToColor(value, variable);
+      const radius = valueToRadius(value, variable);
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="station-marker" style="width:${radius}px;height:${radius}px;background:${color};font-size:${Math.max(9, Math.round(radius*0.28))}px">${value.toFixed(1)}</div>`,
+        iconSize: [radius, radius],
+        iconAnchor: [radius/2, radius/2],
+      });
+
+      const allMeans = sd.monthly_stats.map(m => m.mean).filter(v => v != null);
+      const annualMin = Math.min(...allMeans).toFixed(1);
+      const annualMax = Math.max(...allMeans).toFixed(1);
+
+      const monthData = month === 0 ? null : sd.monthly_stats.find(m => m.month === month);
+      const stdDev = monthData?.std_dev != null ? `±${monthData.std_dev.toFixed(2)}${unit}` : '—';
+      const count = monthData?.count ?? sd.monthly_stats.reduce((a,m) => a + (m.count||0), 0);
+
+      const popupHtml = `
+        <div class="popup-station">${station.name}</div>
+        <div class="popup-value" style="color:${color}">${value.toFixed(2)}${unit}</div>
+        <div class="popup-meta">${periodLabel}</div>
+        <div class="popup-stats">
+          <div>Monthly min avg: <span>${annualMin}${unit}</span></div>
+          <div>Monthly max avg: <span>${annualMax}${unit}</span></div>
+          <div>Std deviation: <span>${stdDev}</span></div>
+          <div>Records: <span>${count.toLocaleString()}</span></div>
+          <div>Region: <span>${station.region || '—'}</span></div>
+          <div>Elevation: <span>${station.elevation_m != null ? station.elevation_m+'m' : '—'}</span></div>
+        </div>
+      `;
+
+      const marker = L.marker([station.latitude, station.longitude], { icon })
+        .bindPopup(popupHtml, { maxWidth: 250 })
+        .addTo(map);
+      markers.push(marker);
     });
 
-    // Legend
-    const legend = document.getElementById('hm-legend');
-    legend.innerHTML = `
-      <span style="white-space:nowrap">${globalMin.toFixed(1)}${unit}</span>
-      <div class="hm-legend-bar" style="background:${legendGradient(variable)}"></div>
-      <span style="white-space:nowrap">${globalMax.toFixed(1)}${unit}</span>
-      <span style="margin-left:8px;color:var(--muted);font-size:0.7rem">Hover cells for exact values</span>
-    `;
+    msg.innerHTML = '';
+    updateLegend(variable, yearFrom, yearTo, month);
 
-    // ── Monthly averages line chart (average per month across all years) ────
-    const monthlyAvgs = Array.from({length: 12}, (_, i) => {
-      const vals = years.map(y => matrix[y]?.[i+1]).filter(v => v != null);
-      return vals.length ? (vals.reduce((a,b) => a+b, 0) / vals.length) : null;
-    });
+    // Bar chart (sorted by value descending)
+    if (stationValues.length > 0) {
+      document.getElementById('bar-card').style.display = 'block';
+      document.getElementById('bar-title').textContent = `${varLabel} by Station — ${periodLabel}`;
+      const sorted = [...stationValues].sort((a,b) => b.value - a.value);
 
-    document.getElementById('avg-card').style.display = 'block';
-    document.getElementById('avg-title').textContent = `Long-term Monthly Averages — ${varLabels[variable]} (${yStart}–${yEnd})`;
-    chartAvg = new Chart(freshCanvas(chartAvg, 'chart-avg'), {
-      type: 'bar',
-      data: {
-        labels: MONTH_NAMES,
-        datasets: [{
-          label: `Avg ${varLabels[variable]}`,
-          data: monthlyAvgs,
-          backgroundColor: monthlyAvgs.map(v => valueToColor(v, globalMin, globalMax, variable) ?? '#22263a'),
-          borderColor: 'transparent',
-          borderRadius: 4,
-        }],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: {
-          x: { grid: { color: '#2e3251' }, ticks: { color: '#8b92b4' } },
-          y: { title: { display: true, text: `${varLabels[variable]} (${unit})`, color: '#8b92b4' }, grid: { color: '#2e3251' }, ticks: { color: '#8b92b4' } },
+      if (barChart) { barChart.destroy(); }
+      const old = document.getElementById('chart-bar');
+      const canvas = old.cloneNode(false);
+      old.parentNode.replaceChild(canvas, old);
+
+      barChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: sorted.map(d => d.station.station_id),
+          datasets: [{
+            label: `${varLabel} (${unit})`,
+            data: sorted.map(d => parseFloat(d.value.toFixed(2))),
+            backgroundColor: sorted.map(d => valueToColor(d.value, variable) + 'cc'),
+            borderColor: sorted.map(d => valueToColor(d.value, variable)),
+            borderWidth: 1.5,
+            borderRadius: 4,
+          }],
         },
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw?.toFixed(1)}${unit}` } } },
-      },
-    });
-
-    // ── Annual average line chart ────────────────────────────────────────────
-    const annualAvgs = years.map(y => {
-      const vals = Object.values(matrix[y] || {}).filter(v => v != null);
-      return vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
-    });
-
-    document.getElementById('annual-card').style.display = 'block';
-    document.getElementById('annual-title').textContent = `Annual Average — ${varLabels[variable]} — ${sid}`;
-    chartAnnual = new Chart(freshCanvas(chartAnnual, 'chart-annual'), {
-      type: 'line',
-      data: {
-        labels: years,
-        datasets: [{
-          label: `Annual avg ${varLabels[variable]}`,
-          data: annualAvgs,
-          borderColor: '#4f8ef7',
-          backgroundColor: 'rgba(79,142,247,0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: years.length > 80 ? 0 : 3,
-          spanGaps: true,
-        }],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: {
-          x: { grid: { color: '#2e3251' }, ticks: { color: '#8b92b4', maxTicksLimit: 15 } },
-          y: { title: { display: true, text: `${varLabels[variable]} (${unit})`, color: '#8b92b4' }, grid: { color: '#2e3251' }, ticks: { color: '#8b92b4' } },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { color: '#8b92b4' }, grid: { color: '#2e3251' } },
+            y: { title: { display: true, text: `${varLabel} (${unit})`, color: '#8b92b4' }, grid: { color: '#2e3251' }, ticks: { color: '#8b92b4' } },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => `${ctx.raw}${unit}` } },
+          },
         },
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw?.toFixed(2)}${unit}` } } },
-      },
-    });
+      });
+    }
 
   } catch(e) {
     msg.innerHTML = '';
     setError(msg, e.message);
   }
-});
+}
 
-if (items.length) document.getElementById('btn-load').click();
+document.getElementById('btn-load').addEventListener('click', loadMap);
+loadMap();
 </script>
 </body>
 </html>
