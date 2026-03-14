@@ -30,6 +30,53 @@
     <p>Climate normals and seasonal breakdown for a selected station</p>
   </div>
 
+  <!-- Explanation panel -->
+  <div class="card" style="margin-bottom:16px">
+    <details>
+      <summary style="cursor:pointer;font-weight:600;color:var(--text);font-size:0.95rem;list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+        <span class="explain-arrow" style="font-size:0.8rem;color:var(--muted);transition:transform 0.2s">▶</span>
+        What am I looking at?
+      </summary>
+      <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">① Climate normals</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            A <strong style="color:var(--text)">climate normal</strong> is the long-term average for a given month, calculated over the selected year range.
+            The default 1991–2020 is the <strong style="color:var(--text)">WMO standard period</strong> used internationally to define what "normal" weather looks like.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">② Temperature & Rainfall chart</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            The <strong style="color:var(--text)">bars show average monthly rainfall</strong> (right axis). The <strong style="color:var(--text)">lines show average max and min temperature</strong> (left axis).
+            This is a standard <em>Walter-Lieth</em> style climate diagram — the gap between the lines shows the typical temperature range each month.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">③ Seasonal temperature range</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Shows <strong style="color:var(--text)">Max, Mean, and Min</strong> temperature for each month as separate lines.
+            The shaded band between Max and Min represents the typical daily range.
+            A wide band in summer means hot days but cool nights; a narrow band means stable temperatures.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">④ Change the year range</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Adjust <strong style="color:var(--text)">Year From / Year To</strong> to compare different periods.
+            Try 1961–1990 vs 1991–2020 to see how a station's climate has shifted over the last 30 years.
+            Older stations like <strong style="color:var(--text)">Durham (from 1853)</strong> have the longest records.
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
   <div class="controls">
     <div>
       <label>Station</label>
@@ -84,6 +131,9 @@
 import { getStations, getSeasonal, applyDarkTheme, MONTH_NAMES, populateStationSelect, setError } from '/static/js/api.js';
 
 applyDarkTheme();
+document.querySelector('details').addEventListener('toggle', function() {
+  this.querySelector('.explain-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+});
 
 const params = new URLSearchParams(location.search);
 const selStation = document.getElementById('sel-station');

@@ -78,6 +78,53 @@
     <p>Geographic view of climate variables across UK weather stations — markers sized and coloured by value</p>
   </div>
 
+  <!-- Explanation panel -->
+  <div class="card" style="margin-bottom:16px">
+    <details>
+      <summary style="cursor:pointer;font-weight:600;color:var(--text);font-size:0.95rem;list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+        <span class="explain-arrow" style="font-size:0.8rem;color:var(--muted);transition:transform 0.2s">▶</span>
+        How do I read this map?
+      </summary>
+      <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">① Marker colour</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Each circle's <strong style="color:var(--text)">colour</strong> shows the average value at that station for the selected variable, month, and year range.
+            For temperature: <span style="color:#4575b4">■ blue</span> = cooler, <span style="color:#f46d43">■ orange/red</span> = warmer.
+            The legend in the bottom-right shows the full scale.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">② Marker size</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            The <strong style="color:var(--text)">size</strong> of each circle also encodes the value — larger circles have higher values.
+            This double-encoding (colour + size) makes it easier to spot differences even at small zoom levels.
+            The number shown inside each circle is the actual average value.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">③ Click a station</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Clicking any circle opens a <strong style="color:var(--text)">popup</strong> with the exact average, the range across months, standard deviation, record count, region, and elevation.
+            Use this to compare specific stations in detail.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">④ Try this</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Set <strong style="color:var(--text)">Variable: Mean Temperature, Month: July</strong> to see the north–south temperature gradient in summer.
+            Switch to <strong style="color:var(--text)">Rainfall, Annual Average</strong> to see how much wetter western/northern stations are compared to the south-east.
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
   <div class="controls">
     <div>
       <label>Variable</label>
@@ -141,6 +188,9 @@
 import { getStations, getSeasonal, applyDarkTheme, setError } from '/static/js/api.js';
 
 applyDarkTheme();
+document.querySelector('details').addEventListener('toggle', function() {
+  this.querySelector('.explain-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+});
 
 const MONTH_NAMES = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const VAR_LABELS = {

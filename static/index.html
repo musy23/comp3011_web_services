@@ -42,6 +42,57 @@
     <p>Explore historic weather records from 8 Met Office stations across the UK</p>
   </div>
 
+  <!-- Explanation panel -->
+  <div class="card" style="margin-bottom:16px">
+    <details>
+      <summary style="cursor:pointer;font-weight:600;color:var(--text);font-size:0.95rem;list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+        <span class="explain-arrow" style="font-size:0.8rem;color:var(--muted);transition:transform 0.2s">▶</span>
+        What is this dashboard?
+      </summary>
+      <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">The data</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            All data comes from the <strong style="color:var(--text)">UK Met Office</strong> historic station records.
+            Each monthly observation includes max/min/mean temperature, rainfall, sunshine hours, and snow depth where available.
+            Records span from <strong style="color:var(--text)">1853 (Durham)</strong> to the present day.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">The stations</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            8 stations are spread across the UK — from <strong style="color:var(--text)">Lerwick (Shetland)</strong> in the far north to <strong style="color:var(--text)">Cardiff</strong> in the south,
+            and from <strong style="color:var(--text)">Armagh (Northern Ireland)</strong> in the west to <strong style="color:var(--text)">Cambridge</strong> in the east.
+            Click any map marker to go to that station's detail page.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">Dashboard pages</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Use the sidebar to explore:
+            <strong style="color:var(--text)">Station Explorer</strong> — monthly climate charts per station ·
+            <strong style="color:var(--text)">Trends</strong> — long-term change over time ·
+            <strong style="color:var(--text)">Compare</strong> — side-by-side station comparison ·
+            <strong style="color:var(--text)">Anomalies</strong> — detect unusual months ·
+            <strong style="color:var(--text)">Climate Map</strong> — geographic view.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">All-time records</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            The records panel below shows the single highest and lowest values ever recorded across all stations and all years.
+            These are the extremes of the entire dataset — genuine historical weather events, not averages.
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
   <!-- Stats row -->
   <div class="stat-grid" id="stats-row">
     <div class="stat-card"><div class="label">Stations</div><div class="value" id="st-count">—</div><div class="sub">active monitoring sites</div></div>
@@ -82,6 +133,10 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
 import { apiFetch, getExtremes, getStations, fmtDate } from '/static/js/api.js';
+
+document.querySelector('details').addEventListener('toggle', function() {
+  this.querySelector('.explain-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+});
 
 // ── Load stations ────────────────────────────────────────────────────────────
 const items = await getStations().catch(() => []);

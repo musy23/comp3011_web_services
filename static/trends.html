@@ -30,6 +30,55 @@
     <p>Linear regression on any climate variable over time with decadal slope and R² goodness-of-fit</p>
   </div>
 
+  <!-- Explanation panel -->
+  <div class="card" style="margin-bottom:16px">
+    <details>
+      <summary style="cursor:pointer;font-weight:600;color:var(--text);font-size:0.95rem;list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+        <span class="explain-arrow" style="font-size:0.8rem;color:var(--muted);transition:transform 0.2s">▶</span>
+        How do I read this page?
+      </summary>
+      <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">① What is a trend line?</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            The dashed line is a <strong style="color:var(--text)">linear regression</strong> — a best-fit straight line through all the data points.
+            It shows the overall direction of change, ignoring year-to-year fluctuations.
+            A <span style="color:#f05858">rising red line</span> = warming/increasing. A <span style="color:#34c78a">falling green line</span> = cooling/decreasing.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">② Trend per decade</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            This tells you how much the variable has changed <strong style="color:var(--text)">per 10-year period</strong> on average.
+            For example, <strong style="color:#f05858">+0.26°C/decade</strong> means temperatures have risen about 0.26°C every 10 years —
+            so roughly +2°C over 75 years.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">③ What is R²?</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            R² (R-squared) measures how well the trend line fits the data — from <strong style="color:var(--text)">0.0 to 1.0</strong>.
+            <strong style="color:var(--text)">1.0</strong> = perfect straight-line fit. <strong style="color:var(--text)">0.0</strong> = no relationship at all.
+            Climate data is noisy, so an R² of 0.1–0.3 can still indicate a real long-term trend.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">④ Try this</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Select <strong style="color:var(--text)">Durham · Mean Temperature · 1900–2024</strong> for a striking long-term warming signal.
+            Try <strong style="color:var(--text)">Oxford · Rainfall</strong> to see whether UK rainfall has changed over a century.
+            Shorter date ranges will show noisier, less certain trends.
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
   <div class="controls">
     <div>
       <label>Station</label>
@@ -93,6 +142,9 @@
 import { getStations, getTrends, applyDarkTheme, PALETTE, setError, populateStationSelect } from '/static/js/api.js';
 
 applyDarkTheme();
+document.querySelector('details').addEventListener('toggle', function() {
+  this.querySelector('.explain-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+});
 
 const data = await getStations().catch(()=>[]);
 const items = data; // getStations() already returns array

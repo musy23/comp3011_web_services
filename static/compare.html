@@ -40,6 +40,52 @@
     <p>Side-by-side climate comparison across multiple UK weather stations</p>
   </div>
 
+  <!-- Explanation panel -->
+  <div class="card" style="margin-bottom:16px">
+    <details>
+      <summary style="cursor:pointer;font-weight:600;color:var(--text);font-size:0.95rem;list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+        <span class="explain-arrow" style="font-size:0.8rem;color:var(--muted);transition:transform 0.2s">▶</span>
+        How do I use this page?
+      </summary>
+      <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">① Select stations</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Tick between <strong style="color:var(--text)">2 and 8 stations</strong> to compare. Stations span the UK from Lerwick (Shetland) in the far north
+            to Cardiff in the south — so you can explore the north–south temperature gradient or compare coastal vs inland climates.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">② Average bar chart</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Shows the <strong style="color:var(--text)">overall mean</strong> of the chosen variable across all months in the date range.
+            Useful for a quick ranking — which station is warmest, wettest, or sunniest on average?
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">③ Min / Mean / Max chart</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            Shows the <strong style="color:var(--text)">full range</strong> recorded at each station.
+            A tall gap between Min and Max means the station experiences large swings (e.g. cold winters, hot summers).
+            A small gap means a more stable, maritime climate.
+          </div>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:8px;padding:14px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--accent)">④ Radar (monthly profile)</div>
+          <div style="color:var(--muted);font-size:0.85rem;line-height:1.6">
+            The spider/radar chart shows the <strong style="color:var(--text)">seasonal shape</strong> of each station across all 12 months.
+            Stations with a similar shape have a similar seasonal rhythm. A bulge toward summer months means a strong seasonal cycle.
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
   <div class="controls" style="flex-direction:column;align-items:flex-start">
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end">
       <div>
@@ -111,6 +157,9 @@
 import { getStations, getCompare, getSeasonal, applyDarkTheme, PALETTE, MONTH_NAMES, setError } from '/static/js/api.js';
 
 applyDarkTheme();
+document.querySelector('details').addEventListener('toggle', function() {
+  this.querySelector('.explain-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+});
 
 const data = await getStations().catch(()=>[]);
 const items = data; // getStations() already returns array
