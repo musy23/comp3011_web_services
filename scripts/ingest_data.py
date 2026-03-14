@@ -1,24 +1,27 @@
 """
 UK Climate Data Ingestion Script
 =================================
-Imports weather station metadata and historical observations into PostgreSQL.
+Reads Met Office historic station data files from the data/ folder and
+loads them into PostgreSQL.
 
-Data sources:
-- Station metadata: Met Office / data.gov.uk (Open Government Licence v3.0)
-- Observations: Kaggle 'uk-daily-weather-observations' dataset (CC0)
+Data source: Met Office Historic Station Data
+URL: https://www.metoffice.gov.uk/pub/data/weather/uk/climate/stationdata/
+Licence: Open Government Licence v3.0
 
-Usage:
-    python scripts/ingest_data.py --stations data/stations.csv --observations data/observations.csv
+Usage (from project root inside Docker):
+    docker-compose exec api python scripts/ingest_data.py
+
+Or directly:
+    python scripts/ingest_data.py --data-dir data/
 
 The script is idempotent — re-running it will skip rows that already exist.
 """
 
 import argparse
-import csv
 import logging
 import os
+import re
 import sys
-from datetime import date, datetime
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -28,169 +31,266 @@ log = logging.getLogger(__name__)
 
 DB_URL = os.getenv(
     "DATABASE_URL_SYNC",
-    "postgresql://postgres:postgres@localhost:5432/uk_climate",
+    "postgresql://postgres:postgres@db:5432/uk_climate",
 )
 
+# Met Office file → station metadata
+# Lat/Lon extracted from file headers; region added manually
+STATION_META = {
+    "armaghdata.txt": {
+        "station_id": "ARMAGH",
+        "name": "Armagh",
+        "region": "Northern Ireland",
+        "country": "UK",
+        "latitude": 54.352,
+        "longitude": -6.649,
+        "elevation_m": 62,
+        "opened_year": 1853,
+        "closed_year": None,
+    },
+    "cambridgedata.txt": {
+        "station_id": "CAMBRIDGE",
+        "name": "Cambridge NIAB",
+        "region": "East England",
+        "country": "UK",
+        "latitude": 52.245,
+        "longitude": 0.103,
+        "elevation_m": 26,
+        "opened_year": 1959,
+        "closed_year": None,
+    },
+    "cardiffdata.txt": {
+        "station_id": "CARDIFF",
+        "name": "Cardiff Bute Park",
+        "region": "Wales",
+        "country": "UK",
+        "latitude": 51.486,
+        "longitude": -3.176,
+        "elevation_m": 11,
+        "opened_year": 1942,
+        "closed_year": None,
+    },
+    "durhamdata.txt": {
+        "station_id": "DURHAM",
+        "name": "Durham",
+        "region": "North East England",
+        "country": "UK",
+        "latitude": 54.768,
+        "longitude": -1.585,
+        "elevation_m": 102,
+        "opened_year": 1880,
+        "closed_year": None,
+    },
+    "heathrowdata.txt": {
+        "station_id": "HEATHROW",
+        "name": "London Heathrow",
+        "region": "London",
+        "country": "UK",
+        "latitude": 51.479,
+        "longitude": -0.449,
+        "elevation_m": 25,
+        "opened_year": 1948,
+        "closed_year": None,
+    },
+    "lerwickdata.txt": {
+        "station_id": "LERWICK",
+        "name": "Lerwick",
+        "region": "Scotland",
+        "country": "UK",
+        "latitude": 60.139,
+        "longitude": -1.183,
+        "elevation_m": 82,
+        "opened_year": 1931,
+        "closed_year": None,
+    },
+    "oxforddata.txt": {
+        "station_id": "OXFORD",
+        "name": "Oxford",
+        "region": "South East England",
+        "country": "UK",
+        "latitude": 51.761,
+        "longitude": -1.262,
+        "elevation_m": 63,
+        "opened_year": 1853,
+        "closed_year": None,
+    },
+    "sheffielddata.txt": {
+        "station_id": "SHEFFIELD",
+        "name": "Sheffield",
+        "region": "Yorkshire",
+        "country": "UK",
+        "latitude": 53.381,
+        "longitude": -1.490,
+        "elevation_m": 131,
+        "opened_year": 1883,
+        "closed_year": None,
+    },
+}
 
-def get_connection():
-    return psycopg2.connect(DB_URL)
 
-
-def parse_float(value: str) -> float | None:
+def parse_val(s: str) -> float | None:
+    """Parse a Met Office value; return None for missing/estimated markers."""
+    s = s.strip().replace("*", "").replace("#", "")
+    if s in ("---", "", "-", "NA"):
+        return None
     try:
-        return float(value.strip()) if value and value.strip() not in ("", "NA", "N/A", "-") else None
+        return float(s)
     except ValueError:
         return None
 
 
-def parse_int(value: str) -> int | None:
-    try:
-        return int(value.strip()) if value and value.strip() not in ("", "NA", "N/A", "-") else None
-    except ValueError:
-        return None
-
-
-def ingest_stations(conn, filepath: str) -> dict[str, int]:
+def parse_metoffice_file(filepath: str) -> list[dict]:
     """
-    Load station metadata from CSV.
-    Expected columns: station_id, name, region, country, latitude, longitude, elevation_m, opened_year, closed_year
-    Returns mapping of station_id -> internal PK.
+    Parse a Met Office historic station data file.
+    Columns: yyyy  mm  tmax  tmin  af  rain  sun
+    Returns list of observation dicts using the 15th of each month as the date.
     """
-    log.info(f"Loading stations from {filepath}")
-    inserted = 0
-    skipped = 0
-    station_map: dict[str, int] = {}
+    rows = []
+    in_data = False
 
-    with open(filepath, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        with conn.cursor() as cur:
-            for row in reader:
-                cur.execute(
-                    """
-                    INSERT INTO stations (station_id, name, region, country, latitude, longitude,
-                                         elevation_m, opened_year, closed_year)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (station_id) DO NOTHING
-                    RETURNING id, station_id
-                    """,
-                    (
-                        row["station_id"].strip(),
-                        row["name"].strip(),
-                        row.get("region", "").strip() or None,
-                        row.get("country", "UK").strip() or "UK",
-                        parse_float(row.get("latitude", "")),
-                        parse_float(row.get("longitude", "")),
-                        parse_int(row.get("elevation_m", "")),
-                        parse_int(row.get("opened_year", "")),
-                        parse_int(row.get("closed_year", "")),
-                    ),
-                )
-                result = cur.fetchone()
-                if result:
-                    station_map[result[1]] = result[0]
-                    inserted += 1
-                else:
-                    # Already exists — fetch the ID
-                    cur.execute("SELECT id FROM stations WHERE station_id = %s", (row["station_id"].strip(),))
-                    existing = cur.fetchone()
-                    if existing:
-                        station_map[row["station_id"].strip()] = existing[0]
-                    skipped += 1
+    with open(filepath, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line_stripped = line.strip()
 
-    conn.commit()
-    log.info(f"Stations: {inserted} inserted, {skipped} already existed")
-    return station_map
+            # Data starts after the header row containing "yyyy"
+            if re.search(r"\byyyy\b", line_stripped, re.IGNORECASE):
+                in_data = True
+                continue
+
+            if not in_data:
+                continue
+
+            # Skip unit row (degC, days, mm, hours) and blank/note lines
+            if not line_stripped or line_stripped.startswith("Provisional"):
+                continue
+            if re.match(r"^\s*(degC|days|mm|hours)", line_stripped, re.IGNORECASE):
+                continue
+
+            # Strip estimated/auto markers and split
+            clean = re.sub(r"[*#]", "", line_stripped)
+            parts = clean.split()
+
+            if len(parts) < 6:
+                continue
+
+            try:
+                year = int(parts[0])
+                month = int(parts[1])
+            except ValueError:
+                continue
+
+            if year < 1800 or year > 2025 or month < 1 or month > 12:
+                continue
+
+            tmax = parse_val(parts[2]) if len(parts) > 2 else None
+            tmin = parse_val(parts[3]) if len(parts) > 3 else None
+            rain = parse_val(parts[5]) if len(parts) > 5 else None
+            sun  = parse_val(parts[6]) if len(parts) > 6 else None
+
+            mean = round((tmax + tmin) / 2, 2) if tmax is not None and tmin is not None else None
+
+            rows.append({
+                "date": f"{year:04d}-{month:02d}-15",
+                "max_temp_c": tmax,
+                "min_temp_c": tmin,
+                "mean_temp_c": mean,
+                "rainfall_mm": rain,
+                "sunshine_hours": sun,
+                "data_quality": 1,
+            })
+
+    return rows
 
 
-def ingest_observations(conn, filepath: str, station_map: dict[str, int]) -> None:
-    """
-    Load daily observations from CSV in batches.
-    Expected columns: station_id, date (YYYY-MM-DD), max_temp_c, min_temp_c, mean_temp_c,
-                      rainfall_mm, sunshine_hours, wind_speed_kmh, snow_depth_cm, data_quality
-    """
-    log.info(f"Loading observations from {filepath}")
-    batch = []
+def upsert_station(conn, meta: dict) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO stations
+                (station_id, name, region, country, latitude, longitude, elevation_m, opened_year, closed_year)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (station_id) DO UPDATE SET
+                name        = EXCLUDED.name,
+                region      = EXCLUDED.region,
+                latitude    = EXCLUDED.latitude,
+                longitude   = EXCLUDED.longitude,
+                elevation_m = EXCLUDED.elevation_m
+            RETURNING id
+            """,
+            (
+                meta["station_id"], meta["name"], meta["region"], meta["country"],
+                meta["latitude"], meta["longitude"], meta["elevation_m"],
+                meta["opened_year"], meta["closed_year"],
+            ),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        return row[0]
+
+
+def ingest_observations(conn, internal_id: int, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+
     batch_size = 1000
-    inserted_total = 0
-    skipped_total = 0
+    total = 0
 
-    with open(filepath, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        with conn.cursor() as cur:
-            for row in reader:
-                sid = row["station_id"].strip()
-                internal_id = station_map.get(sid)
-                if internal_id is None:
-                    log.warning(f"Unknown station_id '{sid}' — skipping row")
-                    skipped_total += 1
-                    continue
-
-                batch.append((
-                    internal_id,
-                    row["date"].strip(),
-                    parse_float(row.get("max_temp_c", "")),
-                    parse_float(row.get("min_temp_c", "")),
-                    parse_float(row.get("mean_temp_c", "")),
-                    parse_float(row.get("rainfall_mm", "")),
-                    parse_float(row.get("sunshine_hours", "")),
-                    parse_float(row.get("wind_speed_kmh", "")),
-                    parse_int(row.get("snow_depth_cm", "")),
-                    parse_int(row.get("data_quality", "1")) or 1,
-                ))
-
-                if len(batch) >= batch_size:
-                    execute_values(
-                        cur,
-                        """
-                        INSERT INTO observations
-                          (station_id, date, max_temp_c, min_temp_c, mean_temp_c,
-                           rainfall_mm, sunshine_hours, wind_speed_kmh, snow_depth_cm, data_quality)
-                        VALUES %s
-                        ON CONFLICT (station_id, date) DO NOTHING
-                        """,
-                        batch,
+    with conn.cursor() as cur:
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i:i + batch_size]
+            execute_values(
+                cur,
+                """
+                INSERT INTO observations
+                    (station_id, date, max_temp_c, min_temp_c, mean_temp_c,
+                     rainfall_mm, sunshine_hours, data_quality)
+                VALUES %s
+                ON CONFLICT (station_id, date) DO NOTHING
+                """,
+                [
+                    (
+                        internal_id, r["date"], r["max_temp_c"], r["min_temp_c"],
+                        r["mean_temp_c"], r["rainfall_mm"], r["sunshine_hours"],
+                        r["data_quality"],
                     )
-                    conn.commit()
-                    inserted_total += len(batch)
-                    log.info(f"  {inserted_total} rows processed...")
-                    batch = []
+                    for r in batch
+                ],
+            )
+            conn.commit()
+            total += len(batch)
 
-            # Final batch
-            if batch:
-                execute_values(
-                    cur,
-                    """
-                    INSERT INTO observations
-                      (station_id, date, max_temp_c, min_temp_c, mean_temp_c,
-                       rainfall_mm, sunshine_hours, wind_speed_kmh, snow_depth_cm, data_quality)
-                    VALUES %s
-                    ON CONFLICT (station_id, date) DO NOTHING
-                    """,
-                    batch,
-                )
-                conn.commit()
-                inserted_total += len(batch)
-
-    log.info(f"Observations: {inserted_total} rows processed, {skipped_total} skipped (unknown station)")
+    return total
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ingest UK climate data into PostgreSQL")
-    parser.add_argument("--stations", required=True, help="Path to stations CSV file")
-    parser.add_argument("--observations", required=True, help="Path to observations CSV file")
+    parser = argparse.ArgumentParser(description="Ingest Met Office station data into PostgreSQL")
+    parser.add_argument(
+        "--data-dir",
+        default="data",
+        help="Directory containing Met Office .txt files (default: data/)",
+    )
     args = parser.parse_args()
 
-    if not os.path.exists(args.stations):
-        log.error(f"Stations file not found: {args.stations}")
-        sys.exit(1)
-    if not os.path.exists(args.observations):
-        log.error(f"Observations file not found: {args.observations}")
+    if not os.path.isdir(args.data_dir):
+        log.error(f"Data directory not found: {args.data_dir}")
         sys.exit(1)
 
-    conn = get_connection()
+    conn = psycopg2.connect(DB_URL)
     try:
-        station_map = ingest_stations(conn, args.stations)
-        ingest_observations(conn, args.observations, station_map)
+        for filename, meta in STATION_META.items():
+            filepath = os.path.join(args.data_dir, filename)
+            if not os.path.exists(filepath):
+                log.warning(f"File not found, skipping: {filepath}")
+                continue
+
+            log.info(f"Processing {filename} → {meta['station_id']}")
+            rows = parse_metoffice_file(filepath)
+            log.info(f"  Parsed {len(rows)} monthly records")
+
+            internal_id = upsert_station(conn, meta)
+            n = ingest_observations(conn, internal_id, rows)
+            log.info(f"  Loaded {n} observations (station db id={internal_id})")
+
         log.info("Ingestion complete.")
     finally:
         conn.close()

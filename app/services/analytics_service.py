@@ -27,7 +27,10 @@ class AnalyticsService:
         if date_to < date_from:
             raise InvalidDateRangeError()
         station = await self._resolve_station(station_id)
-        column = self.repo._validate_variable(variable)
+        try:
+            column = self.repo._validate_variable(variable)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         data = await self.repo.get_trend(station["id"], column, date_from, date_to)
         return {
             "station_id": station["station_id"],
@@ -46,7 +49,10 @@ class AnalyticsService:
         date_to: date | None,
     ) -> dict:
         station = await self._resolve_station(station_id)
-        column = self.repo._validate_variable(variable)
+        try:
+            column = self.repo._validate_variable(variable)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         anomalies = await self.repo.get_anomalies(
             station["id"], column, threshold_sigma, date_from, date_to
         )
@@ -70,7 +76,10 @@ class AnalyticsService:
         if year_to < year_from:
             raise HTTPException(status_code=422, detail="year_to must be >= year_from")
         station = await self._resolve_station(station_id)
-        column = self.repo._validate_variable(variable)
+        try:
+            column = self.repo._validate_variable(variable)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         monthly = await self.repo.get_seasonal(station["id"], column, year_from, year_to)
         return {
             "station_id": station["station_id"],
@@ -91,7 +100,10 @@ class AnalyticsService:
             raise InvalidDateRangeError()
         if len(station_ids) < 2:
             raise HTTPException(status_code=422, detail="Provide at least 2 station IDs to compare")
-        column = self.repo._validate_variable(variable)
+        try:
+            column = self.repo._validate_variable(variable)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         stations_data = await self.repo.get_compare(station_ids, column, date_from, date_to)
         return {
             "variable": variable,
@@ -110,7 +122,10 @@ class AnalyticsService:
         year: int,
     ) -> dict:
         station = await self._resolve_station(station_id)
-        column = self.repo._validate_variable(variable)
+        try:
+            column = self.repo._validate_variable(variable)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         cells = await self.repo.get_heatmap(station["id"], column, year)
         return {
             "station_id": station["station_id"],

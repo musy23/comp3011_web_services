@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.database import engine
-from app.models import Base  # noqa: F401 — imported so Alembic can detect models
+from app.models import ApiKey, Observation, Station, UserAnnotation  # noqa: F401 — imported so Alembic can detect models
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -62,9 +62,10 @@ async def not_found_handler(request: Request, exc):
 
 @app.exception_handler(422)
 async def validation_handler(request: Request, exc):
+    detail = exc.errors() if hasattr(exc, "errors") else str(exc.detail)
     return JSONResponse(
         status_code=422,
-        content={"error": "ValidationError", "detail": exc.errors(), "status_code": 422},
+        content={"error": "ValidationError", "detail": detail, "status_code": 422},
     )
 
 
