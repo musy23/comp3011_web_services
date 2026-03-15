@@ -134,6 +134,61 @@ X-API-Key: your-api-key
 
 Contact the administrator to obtain a key, or set `ADMIN_API_KEY` in your `.env` file for local development.
 
+## MCP Server (AI Assistant Integration)
+
+The API ships with an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, allowing AI assistants such as **Claude Desktop** to query the climate database directly as a set of callable tools.
+
+### Available Tools
+
+| Tool | Description |
+|---|---|
+| `list_stations` | List all 8 stations with coordinates, region, and elevation |
+| `get_climate_normals` | WMO 1991–2020 monthly averages for a station |
+| `get_seasonal_stats` | Monthly mean/min/max/std for any variable and year range |
+| `get_climate_trend` | Linear regression slope (per decade) and R² for any variable |
+| `detect_anomalies` | Find months exceeding a z-score threshold |
+| `compare_stations` | Aggregate stats across multiple stations side-by-side |
+| `get_all_time_records` | All-time records — hottest, coldest, wettest, sunniest |
+| `get_observations` | Raw monthly observations with date filtering |
+
+### Run with Claude Desktop
+
+Add the following to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "uk-climate": {
+      "command": "docker",
+      "args": [
+        "exec", "-i", "comp3011_web_services-api-1",
+        "python", "/app/mcp_server.py"
+      ]
+    }
+  }
+}
+```
+
+Then restart Claude Desktop. You can then ask questions like:
+- *"What is the long-term warming trend at Durham since 1900?"*
+- *"Which UK station has the highest average July temperature?"*
+- *"Find the most extreme rainfall anomalies at Oxford"*
+- *"Compare mean temperature across all stations from 1991 to 2020"*
+
+### Run standalone (inspect / debug)
+
+```bash
+# Inside the container
+docker exec -it comp3011_web_services-api-1 python /app/mcp_server.py
+
+# Or with the fastmcp dev inspector (outside container, with DB accessible)
+pip install fastmcp
+fastmcp dev mcp_server.py
+```
+
+## Deployment
+
+The API is deployed at: *(URL to be added after Railway deployment)*
 
 ## GenAI Declaration
 
