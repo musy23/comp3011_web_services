@@ -58,8 +58,8 @@ comp3011_web_services/
 ### Option A — Docker (Recommended)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/uk-climate-api.git
-cd uk-climate-api
+git clone https://github.com/musy23/comp3011_web_services.git
+cd comp3011_web_services
 
 # Start PostgreSQL + API
 docker-compose up --build
@@ -72,8 +72,8 @@ docker-compose up --build
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/YOUR_USERNAME/uk-climate-api.git
-cd uk-climate-api
+git clone https://github.com/musy23/comp3011_web_services.git
+cd comp3011_web_services
 
 # 2. Create virtual environment
 python -m venv venv
@@ -95,10 +95,18 @@ uvicorn app.main:app --reload
 
 ### Ingest Data
 
+Met Office historic station data files are included in the `data/` directory.
+
 ```bash
-# Download the Kaggle dataset, place CSVs in data/
-python scripts/ingest_data.py --stations data/stations.csv --observations data/observations.csv
+# Inside the running container (recommended):
+docker-compose exec api python scripts/ingest_data.py
+
+# Or directly (with DB accessible):
+python scripts/ingest_data.py --data-dir data/
 ```
+
+The script is idempotent — re-running it safely skips rows that already exist.
+Data sourced from the [Met Office Historic Station Data](https://www.metoffice.gov.uk/pub/data/weather/uk/climate/stationdata/) under the Open Government Licence v3.0.
 
 ## Running the API
 
@@ -188,7 +196,7 @@ fastmcp dev mcp_server.py
 
 ## Deployment
 
-The API is deployed at: *(URL to be added after Railway deployment)*
+The API can be run locally via Docker (see Setup above). For production deployment, Railway or Render are recommended — both support Docker Compose with a free PostgreSQL add-on.
 
 ## GenAI Declaration
 
