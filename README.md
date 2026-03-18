@@ -201,3 +201,6 @@ The API can be run locally via Docker (see Setup above). For production deployme
 ## GenAI Declaration
 
 This project was developed using Claude Code (Anthropic) and Claude Sonnet 4.6 for architecture planning, code generation, debugging, and documentation. A full GenAI usage declaration is included in the technical report (`docs/technical_report.pdf`).
+
+## License
+MIT — see [LICENSE](LICENSE)
