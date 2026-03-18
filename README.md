@@ -134,14 +134,7 @@ X-API-Key: your-api-key
 
 Contact the administrator to obtain a key, or set `ADMIN_API_KEY` in your `.env` file for local development.
 
-## Deployment
-
-The API is deployed at: *(URL to be added after Railway deployment)*
 
 ## GenAI Declaration
 
 This project was developed using Claude Code (Anthropic) and Claude Sonnet 4.6 for architecture planning, code generation, debugging, and documentation. A full GenAI usage declaration is included in the technical report (`docs/technical_report.pdf`).
-
-## License
-
-MIT — see [LICENSE](LICENSE)
