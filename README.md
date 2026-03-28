@@ -20,7 +20,6 @@ This API exposes historical daily climate data from UK Met Office weather statio
 
 - **Met Office MIDAS** (via CEDA Archive) — historical daily observations, Open Government Licence v3.0
 - **data.gov.uk** — station metadata, Open Government Licence v3.0
-- **Kaggle UK Daily Weather Observations** — pre-processed CSV subset for seeding (CC0)
 
 ## Project Structure
 
